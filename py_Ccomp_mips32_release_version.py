@@ -8,6 +8,8 @@ Version : 4:
     -> PEDMAS expression breakup and re-assembly implemented
 
 Opens:
+    -> PEDMAS implementation flow diagram
+    -> If...else, switch...case statement detection + handling
     -> Variable declaration event handling?
     -> In expression analysis stage, before creating temporary variables, check if they are already defined by source code
     
@@ -28,6 +30,7 @@ C compiler for MIPS-NS ISA
 
 References + credits:
     -> https://www.geeksforgeeks.org/variables-in-c/
+    -> https://www.geeksforgeeks.org/decision-making-c-cpp/
     -> https://www.w3schools.com/python/python_regex.asp
     -> https://regex101.com/
     -> https://en.wikipedia.org/wiki/Shunting_yard_algorithm
