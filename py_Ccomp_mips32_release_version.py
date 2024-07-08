@@ -88,7 +88,7 @@ class Program_obj:
     re_get_var_name = "[a-zA-Z_]+[0-9a-zA-Z_]*"
     re_get_exp = "=\s*[a-zA-z_\s\(\)\+\-\/\*\^\%0-9]*\s*"
     re_var_or_num_non_capture = "(?:" + re_get_var_name + "|[0-9]+)"
-    operator_lst_precedence_h2l = ['^', '/', '%', '*', '+', '-']
+    operator_lst_precedence_h2l = ['^', '/', '*', '%', '+', '-']
     
     def __init__(self, svr_lvl):
         self.main_fn_entered = 0
@@ -132,10 +132,7 @@ class Program_obj:
                     var1 = multi_op_var_lst.pop(0)
                     var2 = multi_op_var_lst.pop(0)
                     multi_op_var_lst.insert(0,tmp_var)
-                    if(self.operator_lst_precedence_h2l[op] != '%'):
-                        rplc_str = var1+"\\"+self.operator_lst_precedence_h2l[op]+var2
-                    else:
-                        rplc_str = var1+"\\"+self.operator_lst_precedence_h2l[op]+var2  
+                    rplc_str = var1+"\\"+self.operator_lst_precedence_h2l[op]+var2
                     print(rplc_str)
                     self.parse_event_seq_cntr += 1
                     self.parse_event_sequence_dict[self.parse_event_seq_cntr] = ( tmp_var, ''.join(rplc_str.split("\\")))
