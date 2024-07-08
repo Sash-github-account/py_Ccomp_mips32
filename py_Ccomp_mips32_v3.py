@@ -4,13 +4,12 @@ Created on Sun Jun 23 12:50:59 2024
 
 @author: nsash
 
-Version : 3: 
-    -> implemented chk_var_dec_or_assignmnt()
-    -> Implemented operation sequence assembler method, creates temporary variables to sequence and handle nested paranthesis
+Version : 4: 
+    -> PEDMAS expression breakup and re-assembly implemented
 
 Opens:
-    -> PEDMAS expression breakup and re-assembly
-    -> Variable declaration event handling
+    -> Variable declaration event handling?
+    -> In expression analysis stage, before creating temporary variables, check if they are already defined by source code
     
 Enhancements:
     -> Add support for reporting warnings and different verbosities
@@ -25,7 +24,7 @@ C compiler for MIPS-NS ISA
     -> Comments only supported at start of line, ie., an entire line can be a comment but there can be no comments in lines where there is code
     -> Currently supports only one statement per line
 
-
+                    
 
 References + credits:
     -> https://www.geeksforgeeks.org/variables-in-c/
@@ -85,6 +84,7 @@ class Program_obj:
     re_get_token = "\s*(void|int)"
     re_get_var_name = "[a-zA-Z_]+[0-9a-zA-Z_]*"
     re_get_exp = "=\s*[a-zA-z_\s\(\)\+\-\/\*\^\%0-9]*\s*"
+    re_var_or_num_non_capture = "(?:" + re_get_var_name + "|[0-9]+)"
     operator_lst_precedence_h2l = ['^', '/', '%', '*', '+', '-']
     
     def __init__(self, svr_lvl):
@@ -105,29 +105,74 @@ class Program_obj:
     def print_error_msg_ext(self, msg_strng, line, ln_num):
         print(msg_strng + str(ln_num) + ' ' + line)
         sys.exit()  
- 
+
+    def pedmas_assembler(self, expn_in):
+        expn = expn_in
+        print("INFO: Entering PEDMAS expression assembler.")
+        print(expn)
+        for op in range(len(self.operator_lst_precedence_h2l)):
+            print(op)
+            print(self.operator_lst_precedence_h2l[op])
+            if(self.operator_lst_precedence_h2l[op] != '%'):
+                list_curr_ops = re.findall('(?:'+self.re_var_or_num_non_capture+'\\'+self.operator_lst_precedence_h2l[op]+')+'+self.re_var_or_num_non_capture, expn)
+            else:
+                list_curr_ops =re.findall('(?:'+self.re_var_or_num_non_capture+self.operator_lst_precedence_h2l[op]+')+'+self.re_var_or_num_non_capture, expn)
+            print(list_curr_ops)
+            list_curr_ops_tpl = [tuple(i.split(self.operator_lst_precedence_h2l[op])) for i in list_curr_ops]
+            print(list_curr_ops_tpl)
+            for item in list_curr_ops_tpl:
+                print(item)
+                #print('tmpvar'+str(tmp_cnt))
+                multi_op_var_lst = list(item)
+                for varnum in range(len(item)-1):
+                    tmp_var = 'PEDMAStmpvar'+str(self.tmp_var_cnt)
+                    var1 = multi_op_var_lst.pop(0)
+                    var2 = multi_op_var_lst.pop(0)
+                    multi_op_var_lst.insert(0,tmp_var)
+                    if(self.operator_lst_precedence_h2l[op] != '%'):
+                        rplc_str = var1+"\\"+self.operator_lst_precedence_h2l[op]+var2
+                    else:
+                        rplc_str = var1+"\\"+self.operator_lst_precedence_h2l[op]+var2  
+                    print(rplc_str)
+                    self.parse_event_seq_cntr += 1
+                    self.parse_event_sequence_dict[self.parse_event_seq_cntr] = ( tmp_var, ''.join(rplc_str.split("\\")))
+                    expn = re.sub(rplc_str, tmp_var, expn, count=1)
+                    #print(x)
+                    self.tmp_var_cnt += 1
+        print("INFO: exiting PEDMAS expression assembler")
+        return expn
+                    
+                    
     
     def expn_seq_assembler(self, init_var, var, x1, line, ln_num):       
         num_open_brk = len(re.findall("\(", x1))
         num_cls_brk = len(re.findall("\)", x1))
+        print(num_cls_brk)
         if(num_open_brk == num_cls_brk and (num_open_brk > 0)):
+            print(x1)
             x = [ i.strip('(').strip(')').strip(' ') for i in re.findall("\([a-zA-Z0-9\^\+\-\/\*\%_]+\)", x1)]
+            print(x)
             for exp in x:
                 tmp = exp
                 for oper in self.operator_lst_precedence_h2l:
                     if(tmp.find(oper) >= 0):
                         if(oper != '%'):
                             tmp = tmp.replace(oper, '\\'+oper)
-                x1 = re.sub('\('+tmp+'\)', 'tmp_var_l0_str_'+str(self.tmp_var_cnt), x1)
-                self.parse_event_seq_cntr += 1
-                self.parse_event_sequence_dict[self.parse_event_seq_cntr] = ('tmp_var_l0_str_'+str(self.tmp_var_cnt), exp)
-                self.tmp_var_cnt += 1                        
-            self.expn_seq_assembler(init_var, 'tmp_var_l0_str_'+str(self.tmp_var_cnt), x1, line, ln_num)
+                print(x1)
+                print(exp)
+                chg_var = self.pedmas_assembler(exp)
+                x1 = re.sub('\('+tmp+'\)', chg_var, x1)
+                print(x1)
+                #self.parse_event_seq_cntr += 1
+                #self.parse_event_sequence_dict[self.parse_event_seq_cntr] = ('tmp_var_l0_str_'+str(self.tmp_var_cnt), exp)
+                #self.tmp_var_cnt += 1                        
+            self.expn_seq_assembler(init_var, chg_var, x1, line, ln_num)
             return 1
         elif(num_open_brk == num_cls_brk and (num_open_brk == 0)):
             print("INFO: Num Assignment")
+            tmp_var = self.pedmas_assembler(x1)
             self.parse_event_seq_cntr += 1
-            self.parse_event_sequence_dict[self.parse_event_seq_cntr] = (init_var, x1)
+            self.parse_event_sequence_dict[self.parse_event_seq_cntr] = (init_var, tmp_var)
             return 1            
         else:
             self.print_error_msg_ext("ERROR: expression syntax error at line: ", line, ln_num)
@@ -143,7 +188,7 @@ class Program_obj:
                 if 0 in self.chk_var_re_dec_exp_syntx(re.findall(self.re_get_var_name, expn)):
                     self.print_error_msg_ext("ERROR: undeclared variable used at line: ", line, ln_num)                    
                 else:
-                    self.expn_seq_assembler( var, var, expn, line, ln_num)
+                    self.expn_seq_assembler( var.strip(' '), var.strip(' '), expn, line, ln_num)
             else:
                 return 0
         return 1
@@ -166,7 +211,7 @@ class Program_obj:
 
 
     def chk_var_dec_or_assignmnt(self, line, ln_num):
-        print("INFO: line : " + ln_num + ': ' + line)
+        print("INFO: line : " + line + ': ' + str(ln_num))
         re_str_to_chk = "^" + self.re_get_token + '?' + "(\s*" + self.re_get_var_name + "\s*(" + self.re_get_exp + ")?,?)*;\s*"
         match_obj = re.search(re_str_to_chk, line)
         if(match_obj):
@@ -186,7 +231,7 @@ class Program_obj:
                         var_n_expn_lst_filtered = [i.replace(' ', '').strip(' ') for i in var_n_expn_lst if '=' in i]                        
                     self.expression_syntax_parser(var_n_expn_lst_filtered, line, ln_num)
             else:
-                var_n_expn_lst = [rm_semicoln_nl_sp]
+                var_n_expn_lst = [rm_semicoln_nl_sp.replace(' ', '').strip(' ')]
                 var_only_lst = re.sub(self.re_get_exp, '',  rm_semicoln_nl_sp)
                 if 0 in self.chk_var_re_dec_exp_syntx(var_only_lst):
                     self.expression_syntax_parser(var_n_expn_lst, line, ln_num)
@@ -288,7 +333,9 @@ def start_fl_parse(file_lns):
     for line_num in range(len(file_lns)):
         line_n = line_num+1
         print("TEST: Event seq:")
-        print(prog_obj.parse_event_sequence_dict)
+        #print(prog_obj.parse_event_sequence_dict)
+        for key, value in prog_obj.parse_event_sequence_dict.items():
+            print(f"{key}: {value}")
         # Check if line is a comment => *.split("//")[0] = regex(/s*)  #
         if (Comment_obj.chk_cmnt_n_upd(file_lns[line_num], line_n)):
             continue
