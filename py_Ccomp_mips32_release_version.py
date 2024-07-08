@@ -4,15 +4,14 @@ Created on Sun Jun 23 12:50:59 2024
 
 @author: nsash
 
-Version : 4: 
-    -> PEDMAS expression breakup and re-assembly implemented
+Version : 5: 
+    -> Initial if...else parser implemented
 
 Opens:
-    -> PEDMAS implementation flow diagram
     -> If...else, switch...case statement detection + handling
     -> Variable declaration event handling?
     -> In expression analysis stage, before creating temporary variables, check if they are already defined by source code
-    
+    -> Variable namespace management
 Enhancements:
     -> Add support for reporting warnings and different verbosities
 
@@ -88,6 +87,7 @@ class Program_obj:
     re_get_var_name = "[a-zA-Z_]+[0-9a-zA-Z_]*"
     re_get_exp = "=\s*[a-zA-z_\s\(\)\+\-\/\*\^\%0-9]*\s*"
     re_var_or_num_non_capture = "(?:" + re_get_var_name + "|[0-9]+)"
+    re_if_stmt = "if\s*\((.*)\)\s*{?\s*"
     operator_lst_precedence_h2l = ['^', '/', '*', '%', '+', '-']
     
     def __init__(self, svr_lvl):
@@ -100,6 +100,7 @@ class Program_obj:
         self.parse_event_seq_cntr = 0
         self.variable_names_lst = []
         self.tmp_var_cnt = 0
+        self.open_cbrace_cntr = 0
         
     def __str__(self):
         return f"(Main funtion at line: {self.mn_fn_def_ln_num})"
@@ -193,7 +194,9 @@ class Program_obj:
                 return 0
         return 1
                     
-           
+  
+    def condition_syntax_parser(self, cond):
+        return 1
                     
     def var_declrtn_chkr(self, var):
         if var in self.variable_names_lst:
@@ -208,6 +211,19 @@ class Program_obj:
             var_already_declrd_lst.append(self.var_declrtn_chkr(var)) 
         return var_already_declrd_lst
 
+
+    def chk_if_else_syntx_upd(self, line, ln_num):
+        if_stmt_match_obj = re.search("^\s*" + self.re_if_stmt, line)
+        print(if_stmt_match_obj)
+        if(if_stmt_match_obj):
+            if(self.condition_syntax_parser(re.findall("^\s*" + self.re_if_stmt, line)[0])):
+                print("INFO: if...else branch statement at line: " + str(ln_num) + ': ' + line)
+                self.chk_cbrace_reqmnt_n_upd(line, ln_num, 1)
+            else:
+                self.print_error_msg_ext("ERROR: Failed condition elavuation at line: ", line, ln_num)
+            return 1
+        else:
+            return 0
 
 
     def chk_var_dec_or_assignmnt(self, line, ln_num):
@@ -246,14 +262,16 @@ class Program_obj:
     def chk_cbrace_reqmnt_n_upd(self, line, ln_num = None, ln_is_mn_fn = 0):
         ln_splt_at_cbrace = line.split("{")
         if (len(ln_splt_at_cbrace) > 1):
-            print("INFO: Found main func. open cbrace at line:" + str(ln_num))
+            print("INFO: Found open cbrace at line:" + str(ln_num))
             if(ln_is_mn_fn):
                 self.expecting_opn_cbrace = 0
                 self.expecting_cls_cbrace = 1
+                self.open_cbrace_cntr += 1
             else:
                 if ((re.search("\s*", ln_splt_at_cbrace[0]))):
                     self.expecting_opn_cbrace = 0
                     self.expecting_cls_cbrace = 1
+                    self.open_cbrace_cntr += 1
                     if(re.search("^\s*$", ln_splt_at_cbrace[1]) ):
                         pass
                     else:
@@ -272,7 +290,9 @@ class Program_obj:
                 self.print_error_msg_ext("ERROR: Scbrace closure syntax error at line: ", line, ln_num)
             else:
                 if(ln_splt_at_cbrace[0] == ''):
-                    self.expecting_cls_cbrace = 0
+                    self.open_cbrace_cntr -= 1
+                    if(self.open_cbrace_cntr == 0):
+                        self.expecting_cls_cbrace = 0
                     print("INFO: Found cls cbrace at line: " + str(ln_num) + " " + line)
                     return 1
         else:
@@ -332,10 +352,10 @@ def start_fl_parse(file_lns):
     # Go into loop for each line #
     for line_num in range(len(file_lns)):
         line_n = line_num+1
-        print("TEST: Event seq:")
+        #print("TEST: Event seq:")
         #print(prog_obj.parse_event_sequence_dict)
-        for key, value in prog_obj.parse_event_sequence_dict.items():
-            print(f"{key}: {value}")
+        #for key, value in prog_obj.parse_event_sequence_dict.items():
+            #print(f"{key}: {value}")
         # Check if line is a comment => *.split("//")[0] = regex(/s*)  #
         if (Comment_obj.chk_cmnt_n_upd(file_lns[line_num], line_n)):
             continue
@@ -357,20 +377,20 @@ def start_fl_parse(file_lns):
             # if init has exp, chk exp syntx as well #
         # Check for var assignment#
             # If syntx ok => chk exp syntx #
+        # Check if arithmetic/logical operation and upd val in var dict corresponding to appriate var #
         elif(prog_obj.chk_var_dec_or_assignmnt(file_lns[line_num], line_n)):
+            continue
+        # Check if conditional branch stmt 'if() else if() else' or 'switch() case x:'   and upd brn state vars
+        elif(prog_obj.chk_if_else_syntx_upd(file_lns[line_num], line_n)):
             continue
         else:
             print("WIP, line num: " + str(line_n))
-              
-
-        # Check stand alone var init #
-            # Check if var name in var dict #
-            # upd var val in dict #
-            
-        # Check if arithmetic/logical operation and upd val in var dict corresponding to appriate var #
+                       
         
-        # Check if branch  'if() else if() else' or 'switch() case x:'   and upd brn state vars
-    
+        
+    print(prog_obj.expecting_cls_cbrace)
+    if(prog_obj.expecting_cls_cbrace != 0):
+        prog_obj.print_error_msg_ext("ERROR: unclosed { in program: line:", file_lns[len(file_lns)-1], len(file_lns)-1)
         # Check for loop syntax and upd loop state var #
     
     
