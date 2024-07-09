@@ -4,14 +4,16 @@ Created on Sun Jun 23 12:50:59 2024
 
 @author: nsash
 
-Version : 5: 
-    -> Initial if...else parser implemented
+Version : 6: 
+    -> conditional expression handling added, all operations except unary operations can be used in expressions
+    -> Added initial variable scope handling mechanism
 
 Opens:
-    -> If...else, switch...case statement detection + handling
+    -> If...else, switch...case statement handling w/ Full Variable scope/namespace management
     -> Variable declaration event handling?
-    -> In expression analysis stage, before creating temporary variables, check if they are already defined by source code
-    -> Variable namespace management
+    -> In expression analysis stage, before creating temporary variables, check if they are already defined by source code 
+    -> Add unary operator support
+    
 Enhancements:
     -> Add support for reporting warnings and different verbosities
 
@@ -24,7 +26,7 @@ C compiler for MIPS-NS ISA
     -> Conditionals and loops supported
     -> Comments only supported at start of line, ie., an entire line can be a comment but there can be no comments in lines where there is code
     -> Currently supports only one statement per line
-
+    -> Does not support in-expression increment/decrement operators. Ex:- a= (b++) + d-- + e;
                     
 
 References + credits:
@@ -85,10 +87,10 @@ class Comment:
 class Program_obj:
     re_get_token = "\s*(void|int)"
     re_get_var_name = "[a-zA-Z_]+[0-9a-zA-Z_]*"
-    re_get_exp = "=\s*[a-zA-z_\s\(\)\+\-\/\*\^\%0-9]*\s*"
+    re_get_exp = "=\s*[=<>&!\|a-zA-z_\s\(\)\+\-\/\*\^\%0-9]*\s*"
     re_var_or_num_non_capture = "(?:" + re_get_var_name + "|[0-9]+)"
     re_if_stmt = "if\s*\((.*)\)\s*{?\s*"
-    operator_lst_precedence_h2l = ['^', '/', '*', '%', '+', '-']
+    operator_lst_precedence_h2l = ['^', '/', '*', '%', '+', '-', '<', '>', '<=', '>=', '==', '!=', '&&', '||']
     
     def __init__(self, svr_lvl):
         self.main_fn_entered = 0
@@ -99,6 +101,8 @@ class Program_obj:
         self.parse_event_sequence_dict = {}
         self.parse_event_seq_cntr = 0
         self.variable_names_lst = []
+        self.upper_scope_var_stck = []
+        self.used_vars_stk = []
         self.tmp_var_cnt = 0
         self.open_cbrace_cntr = 0
         
@@ -117,7 +121,7 @@ class Program_obj:
         for op in range(len(self.operator_lst_precedence_h2l)):
             print(op)
             print(self.operator_lst_precedence_h2l[op])
-            if(self.operator_lst_precedence_h2l[op] != '%'):
+            if self.operator_lst_precedence_h2l[op] not in [ '<', '>', '<=', '>=', '==', '!=', '&&', '||', '%']:
                 list_curr_ops = re.findall('(?:'+self.re_var_or_num_non_capture+'\\'+self.operator_lst_precedence_h2l[op]+')+'+self.re_var_or_num_non_capture, expn)
             else:
                 list_curr_ops =re.findall('(?:'+self.re_var_or_num_non_capture+self.operator_lst_precedence_h2l[op]+')+'+self.re_var_or_num_non_capture, expn)
@@ -151,22 +155,19 @@ class Program_obj:
         print(num_cls_brk)
         if(num_open_brk == num_cls_brk and (num_open_brk > 0)):
             print(x1)
-            x = [ i.strip('(').strip(')').strip(' ') for i in re.findall("\([a-zA-Z0-9\^\+\-\/\*\%_]+\)", x1)]
+            x = [ i.strip('(').strip(')').strip(' ') for i in re.findall("\([=&\|!<>a-zA-Z0-9\^\+\-\/\*\%_]+\)", x1)]
             print(x)
             for exp in x:
                 tmp = exp
                 for oper in self.operator_lst_precedence_h2l:
                     if(tmp.find(oper) >= 0):
-                        if(oper != '%'):
+                        if oper in ['^', '/', '*', '+', '-']:
                             tmp = tmp.replace(oper, '\\'+oper)
                 print(x1)
                 print(exp)
                 chg_var = self.pedmas_assembler(exp)
                 x1 = re.sub('\('+tmp+'\)', chg_var, x1)
-                print(x1)
-                #self.parse_event_seq_cntr += 1
-                #self.parse_event_sequence_dict[self.parse_event_seq_cntr] = ('tmp_var_l0_str_'+str(self.tmp_var_cnt), exp)
-                #self.tmp_var_cnt += 1                        
+                print(x1)                        
             self.expn_seq_assembler(init_var, chg_var, x1, line, ln_num)
             return 1
         elif(num_open_brk == num_cls_brk and (num_open_brk == 0)):
@@ -182,7 +183,12 @@ class Program_obj:
     
     def expression_syntax_parser(self, var_n_assignmnt_exp_lst, line, ln_num):
         for var_expn in var_n_assignmnt_exp_lst:
-            [var, expn] =  var_expn.split('=') if len(var_expn.split('=')) > 1 else  [ 1, 1]
+            #[var, expn] =  var_expn.split('=') if len(var_expn.split('=')) == 2 else  [ 1, 1]
+            var_expn_tuple_lst = re.findall('^([a-zA-Z_]+[0-9a-zA-Z_]*=)([a-zA-Z_\+\-\(\)\/\*\^\%!\|=0-9]*)', var_expn)
+            print(var_expn_tuple_lst)
+            var = var_expn_tuple_lst[0][0].strip('=')
+            expn = var_expn_tuple_lst[0][1]
+            print(var,expn)
             if([var, expn] == [ 1, 1]):
                 self.print_error_msg_ext("ERROR: Expression syntax error at line: ", line, ln_num)
             elif(re.search(self.re_get_exp, '='+expn)):
@@ -190,13 +196,12 @@ class Program_obj:
                     self.print_error_msg_ext("ERROR: undeclared variable used at line: ", line, ln_num)                    
                 else:
                     self.expn_seq_assembler( var.strip(' '), var.strip(' '), expn, line, ln_num)
+                    #return 1
             else:
                 return 0
         return 1
                     
   
-    def condition_syntax_parser(self, cond):
-        return 1
                     
     def var_declrtn_chkr(self, var):
         if var in self.variable_names_lst:
@@ -216,11 +221,16 @@ class Program_obj:
         if_stmt_match_obj = re.search("^\s*" + self.re_if_stmt, line)
         print(if_stmt_match_obj)
         if(if_stmt_match_obj):
-            if(self.condition_syntax_parser(re.findall("^\s*" + self.re_if_stmt, line)[0])):
+            cond_temp_var = "COND_var_"+str(self.tmp_var_cnt)
+            self.tmp_var_cnt += 1
+            self.parse_event_seq_cntr += 1
+            self.parse_event_sequence_dict[self.parse_event_seq_cntr] = ('BRANCH', cond_temp_var)
+            cond_str_to_parse = [cond_temp_var + '=' +  re.findall("^\s*" + self.re_if_stmt, line)[0].replace(' ', '').strip(' ')]
+            if(self.expression_syntax_parser(cond_str_to_parse, line, ln_num)):
                 print("INFO: if...else branch statement at line: " + str(ln_num) + ': ' + line)
                 self.chk_cbrace_reqmnt_n_upd(line, ln_num, 1)
             else:
-                self.print_error_msg_ext("ERROR: Failed condition elavuation at line: ", line, ln_num)
+                self.print_error_msg_ext("ERROR: Failed condition evaluation at line: ", line, ln_num)
             return 1
         else:
             return 0
@@ -230,13 +240,17 @@ class Program_obj:
         print("INFO: line : " + line + ': ' + str(ln_num))
         re_str_to_chk = "^" + self.re_get_token + '?' + "(\s*" + self.re_get_var_name + "\s*(" + self.re_get_exp + ")?,?)*;\s*"
         match_obj = re.search(re_str_to_chk, line)
+        print(match_obj)
         if(match_obj):
             match_type = 1 if (re.search("^" + self.re_get_token, match_obj.group())) else 0
+            print(match_type)
             rm_dec_token = re.sub("^" + self.re_get_token, '', match_obj.group())
             rm_semicoln_nl_sp = rm_dec_token.strip("\n").strip(" ").strip(";")
             if(match_type==1):
                 var_n_expn_lst = rm_semicoln_nl_sp.split(',')
-                var_only_lst = re.sub(self.re_get_exp, '',  rm_semicoln_nl_sp).split(',')
+                var_only_lst = re.sub(self.re_get_exp, '',  rm_semicoln_nl_sp).replace(' ', '').split(',')
+                print(var_n_expn_lst)
+                print(var_only_lst)
                 if 1 in self.chk_var_re_dec_exp_syntx(var_only_lst):
                     self.print_error_msg_ext("ERROR: Variable re-declaration at line: ", line, ln_num)
                 else:
@@ -245,6 +259,7 @@ class Program_obj:
                         var_n_expn_lst_filtered = [i.replace(' ', '').strip(' ') for i in [var_n_expn_lst] if '=' in i]
                     else:
                         var_n_expn_lst_filtered = [i.replace(' ', '').strip(' ') for i in var_n_expn_lst if '=' in i]                        
+                    print(var_n_expn_lst_filtered)
                     self.expression_syntax_parser(var_n_expn_lst_filtered, line, ln_num)
             else:
                 var_n_expn_lst = [rm_semicoln_nl_sp.replace(' ', '').strip(' ')]
@@ -267,11 +282,15 @@ class Program_obj:
                 self.expecting_opn_cbrace = 0
                 self.expecting_cls_cbrace = 1
                 self.open_cbrace_cntr += 1
+                if(self.variable_names_lst != []):
+                    self.upper_scope_var_stck.append(self.variable_names_lst)
             else:
                 if ((re.search("\s*", ln_splt_at_cbrace[0]))):
                     self.expecting_opn_cbrace = 0
                     self.expecting_cls_cbrace = 1
                     self.open_cbrace_cntr += 1
+                    if(self.variable_names_lst != []):
+                        self.upper_scope_var_stck.append(self.variable_names_lst)
                     if(re.search("^\s*$", ln_splt_at_cbrace[1]) ):
                         pass
                     else:
@@ -287,10 +306,15 @@ class Program_obj:
         ln_splt_at_cbrace = line.split("}")
         if(len(ln_splt_at_cbrace) > 1):
             if(ln_splt_at_cbrace[1].strip(' ').strip('\n') != ''):
-                self.print_error_msg_ext("ERROR: Scbrace closure syntax error at line: ", line, ln_num)
+                self.print_error_msg_ext("ERROR: cbrace closure syntax error at line: ", line, ln_num)
             else:
                 if(ln_splt_at_cbrace[0] == ''):
                     self.open_cbrace_cntr -= 1
+                    if(self.open_cbrace_cntr < 0):
+                        self.print_error_msg_ext("ERROR: No corresponding open brace found at line: ", line, ln_num)
+                    if(self.variable_names_lst != [] and self.upper_scope_var_stck != []):
+                        self.variable_names_lst = []
+                        self.variable_names_lst = self.upper_scope_var_stck.pop()
                     if(self.open_cbrace_cntr == 0):
                         self.expecting_cls_cbrace = 0
                     print("INFO: Found cls cbrace at line: " + str(ln_num) + " " + line)
@@ -352,10 +376,10 @@ def start_fl_parse(file_lns):
     # Go into loop for each line #
     for line_num in range(len(file_lns)):
         line_n = line_num+1
-        #print("TEST: Event seq:")
+        print("TEST: Event seq:")
         #print(prog_obj.parse_event_sequence_dict)
-        #for key, value in prog_obj.parse_event_sequence_dict.items():
-            #print(f"{key}: {value}")
+        for key, value in prog_obj.parse_event_sequence_dict.items():
+            print(f"{key}: {value}")
         # Check if line is a comment => *.split("//")[0] = regex(/s*)  #
         if (Comment_obj.chk_cmnt_n_upd(file_lns[line_num], line_n)):
             continue
