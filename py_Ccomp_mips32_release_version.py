@@ -9,10 +9,14 @@ Version : 6:
     -> Added initial variable scope handling mechanism
 
 Opens:
+    -> Add design spec flow diagram for if...else handling
+    -> Update existing flow spec diagrams to include logical operator, mixed conditional-arithmetic expression handling
     -> If...else, switch...case statement handling w/ Full Variable scope/namespace management
     -> Variable declaration event handling?
     -> In expression analysis stage, before creating temporary variables, check if they are already defined by source code 
     -> Add unary operator support
+    -> add support for pointers
+    -> add support for random code block handling
     
 Enhancements:
     -> Add support for reporting warnings and different verbosities
@@ -33,6 +37,7 @@ References + credits:
     -> https://www.geeksforgeeks.org/variables-in-c/
     -> https://www.geeksforgeeks.org/decision-making-c-cpp/
     -> https://www.w3schools.com/python/python_regex.asp
+    -> https://www.geeksforgeeks.org/scope-rules-in-c/
     -> https://regex101.com/
     -> https://en.wikipedia.org/wiki/Shunting_yard_algorithm
     -> https://stackoverflow.com/questions/24256463/arithmetic-calculation-for-bodmas-in-java
