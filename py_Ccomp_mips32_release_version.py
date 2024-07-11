@@ -4,13 +4,16 @@ Created on Sun Jun 23 12:50:59 2024
 
 @author: nsash
 
-Version : 6: 
+Version : 7: 
     -> conditional expression handling added, all operations except unary operations can be used in expressions
     -> Added initial variable scope handling mechanism
-
-Opens:
-    -> Add design spec flow diagram for if...else handling
-    -> Update existing flow spec diagrams to include logical operator, mixed conditional-arithmetic expression handling
+    -> Added design spec flow diagram for if...else handling
+    -> Updated existing flow spec diagrams to include logical operator, mixed conditional-arithmetic expression handling
+    -> Added variable scope management code capable of handling arbitrary nested blocks
+    -> Added PPT+flow spec diagram for scope management
+    -> Added test C code for verifying scope management
+    
+Opens:       
     -> If...else, switch...case statement handling w/ Full Variable scope/namespace management
     -> Variable declaration event handling?
     -> In expression analysis stage, before creating temporary variables, check if they are already defined by source code 
@@ -105,9 +108,9 @@ class Program_obj:
         self.mn_fn_def_ln_num = None
         self.parse_event_sequence_dict = {}
         self.parse_event_seq_cntr = 0
-        self.variable_names_lst = []
-        self.upper_scope_var_stck = []
-        self.used_vars_stk = []
+        self.current_scope_var_list = []
+        self.scope_var_lst_stck = []
+        self.done_scope_var_lst_stck = []
         self.tmp_var_cnt = 0
         self.open_cbrace_cntr = 0
         
@@ -177,6 +180,7 @@ class Program_obj:
             return 1
         elif(num_open_brk == num_cls_brk and (num_open_brk == 0)):
             print("INFO: Num Assignment")
+            print(init_var)
             tmp_var = self.pedmas_assembler(x1)
             self.parse_event_seq_cntr += 1
             self.parse_event_sequence_dict[self.parse_event_seq_cntr] = (init_var, tmp_var)
@@ -189,16 +193,31 @@ class Program_obj:
     def expression_syntax_parser(self, var_n_assignmnt_exp_lst, line, ln_num):
         for var_expn in var_n_assignmnt_exp_lst:
             #[var, expn] =  var_expn.split('=') if len(var_expn.split('=')) == 2 else  [ 1, 1]
-            var_expn_tuple_lst = re.findall('^([a-zA-Z_]+[0-9a-zA-Z_]*=)([a-zA-Z_\+\-\(\)\/\*\^\%!\|=0-9]*)', var_expn)
+            var_expn_tuple_lst = re.findall('^([a-zA-Z_]+[0-9a-zA-Z_]*=)([=&\|!<>a-zA-Z_\+\-\(\)\/\*\^\%!\|=0-9]*)', var_expn)
             print(var_expn_tuple_lst)
             var = var_expn_tuple_lst[0][0].strip('=')
             expn = var_expn_tuple_lst[0][1]
             print(var,expn)
-            if([var, expn] == [ 1, 1]):
+            if([var, expn] == [ ]):
                 self.print_error_msg_ext("ERROR: Expression syntax error at line: ", line, ln_num)
             elif(re.search(self.re_get_exp, '='+expn)):
-                if 0 in self.chk_var_re_dec_exp_syntx(re.findall(self.re_get_var_name, expn)):
-                    self.print_error_msg_ext("ERROR: undeclared variable used at line: ", line, ln_num)                    
+                var_only_lst = re.findall(self.re_get_var_name, expn)
+                redec_lst = self.chk_var_re_dec_exp_syntx(var_only_lst)
+                print(var_only_lst)
+                print(redec_lst)
+                if 0 in redec_lst:
+                    var_lst_to_chk_at_upper_scope = []
+                    for i in range(len(redec_lst)):
+                        if redec_lst[i] == 0:
+                            var_lst_to_chk_at_upper_scope.append(var_only_lst[i])
+                    var_present_dict = self.chk_if_var_in_upper_scope(var_lst_to_chk_at_upper_scope)
+                    for dictvar in var_present_dict:
+                        if(var_present_dict[dictvar] == 0):
+                            self.print_error_msg_ext("ERROR: Undeclared variable at line: ", line, ln_num)
+                        else:
+                            continue
+                    print(var, expn)
+                    self.expn_seq_assembler( var.strip(' '), var.strip(' '), expn, line, ln_num)
                 else:
                     self.expn_seq_assembler( var.strip(' '), var.strip(' '), expn, line, ln_num)
                     #return 1
@@ -206,10 +225,23 @@ class Program_obj:
                 return 0
         return 1
                     
-  
+
+    
+
+    def chk_if_var_in_upper_scope(self, var_lst):
+        print("ENTERED upper scope chkr: ", var_lst)
+        zeros_list = [0 for _ in range(len(var_lst))]
+        var_present_at_upper_scope_lst = dict(zip(var_lst, zeros_list))
+        print(var_present_at_upper_scope_lst)
+        for lst in self.scope_var_lst_stck:
+            for var in lst:
+                if var in var_lst:
+                    var_present_at_upper_scope_lst[var] = 1
+        return var_present_at_upper_scope_lst
+            
                     
     def var_declrtn_chkr(self, var):
-        if var in self.variable_names_lst:
+        if var in self.current_scope_var_list:
             return 1
         else:
             return 0
@@ -231,6 +263,7 @@ class Program_obj:
             self.parse_event_seq_cntr += 1
             self.parse_event_sequence_dict[self.parse_event_seq_cntr] = ('BRANCH', cond_temp_var)
             cond_str_to_parse = [cond_temp_var + '=' +  re.findall("^\s*" + self.re_if_stmt, line)[0].replace(' ', '').strip(' ')]
+            print(cond_str_to_parse)
             if(self.expression_syntax_parser(cond_str_to_parse, line, ln_num)):
                 print("INFO: if...else branch statement at line: " + str(ln_num) + ': ' + line)
                 self.chk_cbrace_reqmnt_n_upd(line, ln_num, 1)
@@ -259,7 +292,7 @@ class Program_obj:
                 if 1 in self.chk_var_re_dec_exp_syntx(var_only_lst):
                     self.print_error_msg_ext("ERROR: Variable re-declaration at line: ", line, ln_num)
                 else:
-                    self.variable_names_lst += [i.strip(' ') for i in var_only_lst]
+                    self.current_scope_var_list += [i.strip(' ') for i in var_only_lst]
                     if(len(var_n_expn_lst) == 1):
                         var_n_expn_lst_filtered = [i.replace(' ', '').strip(' ') for i in [var_n_expn_lst] if '=' in i]
                     else:
@@ -269,10 +302,24 @@ class Program_obj:
             else:
                 var_n_expn_lst = [rm_semicoln_nl_sp.replace(' ', '').strip(' ')]
                 var_only_lst = re.sub(self.re_get_exp, '',  rm_semicoln_nl_sp)
-                if 0 in self.chk_var_re_dec_exp_syntx(var_only_lst):
+                redec_lst = self.chk_var_re_dec_exp_syntx(var_only_lst.strip(' '))
+                print(var_n_expn_lst)
+                print(var_only_lst)
+                print(redec_lst)
+                if 1 in redec_lst:
                     self.expression_syntax_parser(var_n_expn_lst, line, ln_num)
                 else:
-                    self.print_error_msg_ext("ERROR: Undeclared variable at line: ", line, ln_num)
+                    var_lst_to_chk_at_upper_scope = []
+                    for i in range(len(redec_lst)):
+                        if redec_lst[i] == 0:
+                            var_lst_to_chk_at_upper_scope.append(var_only_lst[i])
+                    var_present_dict = self.chk_if_var_in_upper_scope(var_lst_to_chk_at_upper_scope)
+                    print(var_present_dict)
+                    for var in var_present_dict:
+                        if(var_present_dict[var] == 0):
+                            self.print_error_msg_ext("ERROR: Undeclared variable at line: ", line, ln_num)
+                        else:
+                            self.expression_syntax_parser(var_n_expn_lst, line, ln_num)
             return 1
         else:
             return 0
@@ -287,15 +334,17 @@ class Program_obj:
                 self.expecting_opn_cbrace = 0
                 self.expecting_cls_cbrace = 1
                 self.open_cbrace_cntr += 1
-                if(self.variable_names_lst != []):
-                    self.upper_scope_var_stck.append(self.variable_names_lst)
+                if(self.current_scope_var_list != []):
+                    self.scope_var_lst_stck.append(self.current_scope_var_list)
+                    self.current_scope_var_list = []
             else:
                 if ((re.search("\s*", ln_splt_at_cbrace[0]))):
                     self.expecting_opn_cbrace = 0
                     self.expecting_cls_cbrace = 1
                     self.open_cbrace_cntr += 1
-                    if(self.variable_names_lst != []):
-                        self.upper_scope_var_stck.append(self.variable_names_lst)
+                    if(self.current_scope_var_list != []):
+                        self.scope_var_lst_stck.append(self.current_scope_var_list)
+                        self.current_scope_var_list = []
                     if(re.search("^\s*$", ln_splt_at_cbrace[1]) ):
                         pass
                     else:
@@ -317,9 +366,10 @@ class Program_obj:
                     self.open_cbrace_cntr -= 1
                     if(self.open_cbrace_cntr < 0):
                         self.print_error_msg_ext("ERROR: No corresponding open brace found at line: ", line, ln_num)
-                    if(self.variable_names_lst != [] and self.upper_scope_var_stck != []):
-                        self.variable_names_lst = []
-                        self.variable_names_lst = self.upper_scope_var_stck.pop()
+                    if(self.current_scope_var_list != [] and self.scope_var_lst_stck != []):
+                        self.done_scope_var_lst_stck.append(self.current_scope_var_list)
+                        self.current_scope_var_list = []
+                        self.current_scope_var_list = self.scope_var_lst_stck.pop()
                     if(self.open_cbrace_cntr == 0):
                         self.expecting_cls_cbrace = 0
                     print("INFO: Found cls cbrace at line: " + str(ln_num) + " " + line)
@@ -382,6 +432,10 @@ def start_fl_parse(file_lns):
     for line_num in range(len(file_lns)):
         line_n = line_num+1
         print("TEST: Event seq:")
+        print(prog_obj.current_scope_var_list)
+        print(prog_obj.scope_var_lst_stck)
+        print(prog_obj.done_scope_var_lst_stck)
+        
         #print(prog_obj.parse_event_sequence_dict)
         for key, value in prog_obj.parse_event_sequence_dict.items():
             print(f"{key}: {value}")
@@ -415,7 +469,6 @@ def start_fl_parse(file_lns):
         else:
             print("WIP, line num: " + str(line_n))
                        
-        
         
     print(prog_obj.expecting_cls_cbrace)
     if(prog_obj.expecting_cls_cbrace != 0):
