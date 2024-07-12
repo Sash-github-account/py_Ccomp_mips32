@@ -4,14 +4,9 @@ Created on Sun Jun 23 12:50:59 2024
 
 @author: nsash
 
-Version : 7: 
-    -> conditional expression handling added, all operations except unary operations can be used in expressions
-    -> Added initial variable scope handling mechanism
-    -> Added design spec flow diagram for if...else handling
-    -> Updated existing flow spec diagrams to include logical operator, mixed conditional-arithmetic expression handling
-    -> Added variable scope management code capable of handling arbitrary nested blocks
-    -> Added PPT+flow spec diagram for scope management
-    -> Added test C code for verifying scope management
+Version : 8: 
+    -> Bug clean up
+    -> Moved branch parse event to after condition evaluation
     
 Opens:       
     -> If...else, switch...case statement handling w/ Full Variable scope/namespace management
@@ -37,6 +32,8 @@ C compiler for MIPS-NS ISA
                     
 
 References + credits:
+    -> copilot
+    -> chatGPT
     -> https://www.geeksforgeeks.org/variables-in-c/
     -> https://www.geeksforgeeks.org/decision-making-c-cpp/
     -> https://www.w3schools.com/python/python_regex.asp
@@ -49,6 +46,7 @@ References + credits:
 # Import required libs #
 import sys
 import re
+import time
 
 ##########################################################
 # Class definitions for Objects and data structures used #
@@ -120,6 +118,8 @@ class Program_obj:
 
     def print_error_msg_ext(self, msg_strng, line, ln_num):
         print(msg_strng + str(ln_num) + ' ' + line)
+        print("Program runtime:")
+        print(f"--- {time.time() - start_time:.6f} seconds ---")
         sys.exit()  
 
     def pedmas_assembler(self, expn_in):
@@ -259,14 +259,14 @@ class Program_obj:
         print(if_stmt_match_obj)
         if(if_stmt_match_obj):
             cond_temp_var = "COND_var_"+str(self.tmp_var_cnt)
-            self.tmp_var_cnt += 1
-            self.parse_event_seq_cntr += 1
-            self.parse_event_sequence_dict[self.parse_event_seq_cntr] = ('BRANCH', cond_temp_var)
-            cond_str_to_parse = [cond_temp_var + '=' +  re.findall("^\s*" + self.re_if_stmt, line)[0].replace(' ', '').strip(' ')]
+            self.tmp_var_cnt += 1           
+            cond_str_to_parse = [cond_temp_var + '=' +  re.findall("^\s*" + self.re_if_stmt, line)[0].replace(' ', '').strip(' ')]           
             print(cond_str_to_parse)
             if(self.expression_syntax_parser(cond_str_to_parse, line, ln_num)):
                 print("INFO: if...else branch statement at line: " + str(ln_num) + ': ' + line)
                 self.chk_cbrace_reqmnt_n_upd(line, ln_num, 1)
+                self.parse_event_seq_cntr += 1
+                self.parse_event_sequence_dict[self.parse_event_seq_cntr] = ('BRANCH', cond_temp_var)
             else:
                 self.print_error_msg_ext("ERROR: Failed condition evaluation at line: ", line, ln_num)
             return 1
@@ -284,6 +284,7 @@ class Program_obj:
             print(match_type)
             rm_dec_token = re.sub("^" + self.re_get_token, '', match_obj.group())
             rm_semicoln_nl_sp = rm_dec_token.strip("\n").strip(" ").strip(";")
+            print(rm_semicoln_nl_sp)
             if(match_type==1):
                 var_n_expn_lst = rm_semicoln_nl_sp.split(',')
                 var_only_lst = re.sub(self.re_get_exp, '',  rm_semicoln_nl_sp).replace(' ', '').split(',')
@@ -302,7 +303,7 @@ class Program_obj:
             else:
                 var_n_expn_lst = [rm_semicoln_nl_sp.replace(' ', '').strip(' ')]
                 var_only_lst = re.sub(self.re_get_exp, '',  rm_semicoln_nl_sp)
-                redec_lst = self.chk_var_re_dec_exp_syntx(var_only_lst.strip(' '))
+                redec_lst = self.chk_var_re_dec_exp_syntx([var_only_lst.strip(' ')])
                 print(var_n_expn_lst)
                 print(var_only_lst)
                 print(redec_lst)
@@ -479,7 +480,10 @@ def start_fl_parse(file_lns):
     
 # Main script begins #
 if(__name__ == "__main__"):
+    start_time = time.time()
     flist = get_file_list_for_compile()
     for fl in flist:
         fl_lns = get_file_lines_list(fl)
         start_fl_parse(fl_lns)
+    print("Program runtime:")
+    print(f"--- {time.time() - start_time:.6f} seconds ---")
