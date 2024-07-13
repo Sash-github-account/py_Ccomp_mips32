@@ -4,13 +4,13 @@ Created on Sun Jun 23 12:50:59 2024
 
 @author: nsash
 
-Version : 8: 
-    -> Bug clean up
-    -> Moved branch parse event to after condition evaluation
+Version : 10: 
+    -> Added FSM spec diagram for if-elseif-else interdependency management
+    -> Initial code for if-elseif-else management class
     
-Opens:       
-    -> If...else, switch...case statement handling w/ Full Variable scope/namespace management
-    -> Variable declaration event handling?
+Opens:    
+    -> map out the implementation details of if-elseif-else management interaction with main program object
+    -> else if{}, else{}, switch case implementation
     -> In expression analysis stage, before creating temporary variables, check if they are already defined by source code 
     -> Add unary operator support
     -> add support for pointers
@@ -34,6 +34,8 @@ C compiler for MIPS-NS ISA
 References + credits:
     -> copilot
     -> chatGPT
+    -> https://www.programiz.com/c-programming/online-compiler/
+    -> https://www.geeksforgeeks.org/c-pointers/
     -> https://www.geeksforgeeks.org/variables-in-c/
     -> https://www.geeksforgeeks.org/decision-making-c-cpp/
     -> https://www.w3schools.com/python/python_regex.asp
@@ -86,6 +88,28 @@ class Comment:
         
 #--------- END of comment class----------#        
         
+
+
+
+# IfElseManager class, stores info about comment lines in a file, in a dict #
+class IfElseManager:
+    fsm_states = ['waiting_for_if', 'waiting_for_open_cbrace', 'waiting_for_if_cls_cbrace', 'nxt_can_be_else_or_elseif', 'waiting_for_elseif_opn_cbrace', 'waiting_for_elseif_cls_cbrace', 'waiting_for_else_or_if', 'waiting_for_else']
+
+    def __init__(self):
+        self.if_nest_level_cntr = 0
+        self.current_state = self.fsm_states[0]
+
+
+    def __str__(self):
+        return f"{self.if_nest_level_cntr}({self.current_state})"
+    
+    
+
+#--------- END of comment class----------#     
+
+
+
+
 
 
 # Program_obj class, stores info about comment lines in a file, in a dict #
@@ -226,7 +250,15 @@ class Program_obj:
         return 1
                     
 
-    
+
+
+    def upd_var_lst_add_declrtn_event(self, var_lst):
+        for var in var_lst:
+            self.current_scope_var_list.append(var)
+            self.parse_event_seq_cntr += 1
+            self.parse_event_sequence_dict[self.parse_event_seq_cntr] = ('DECLARATION', var)
+            
+            
 
     def chk_if_var_in_upper_scope(self, var_lst):
         print("ENTERED upper scope chkr: ", var_lst)
@@ -290,10 +322,12 @@ class Program_obj:
                 var_only_lst = re.sub(self.re_get_exp, '',  rm_semicoln_nl_sp).replace(' ', '').split(',')
                 print(var_n_expn_lst)
                 print(var_only_lst)
+                var_only_lst_clndup = []
                 if 1 in self.chk_var_re_dec_exp_syntx(var_only_lst):
                     self.print_error_msg_ext("ERROR: Variable re-declaration at line: ", line, ln_num)
                 else:
-                    self.current_scope_var_list += [i.strip(' ') for i in var_only_lst]
+                    var_only_lst_clndup += [i.strip(' ') for i in var_only_lst]
+                    self.upd_var_lst_add_declrtn_event(var_only_lst_clndup)
                     if(len(var_n_expn_lst) == 1):
                         var_n_expn_lst_filtered = [i.replace(' ', '').strip(' ') for i in [var_n_expn_lst] if '=' in i]
                     else:
