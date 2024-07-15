@@ -1,6 +1,5 @@
  // Hi // There // 
 // Hi // There // 
-
 int a, b, c;
 a =7;
 int main () {

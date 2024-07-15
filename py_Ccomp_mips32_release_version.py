@@ -5,11 +5,11 @@ Created on Sun Jun 23 12:50:59 2024
 @author: nsash
 
 Version : 11: 
-    -> Added file pre-compile re-formatting function
-    -> Added if-elseif-else manager class to maintain state of nested if else - still has bugs
+    -> Updated if-else flow diagram with labels
+    -> fixed bugs: transition from 'waiting for else }' state when 'got nested if' event occurs
+    -> re-organized IfElseManager methods
     
 Opens:    
-    -> clean if else manager bugs
     -> switch case implementation
     -> In expression analysis stage, before creating temporary variables, check if they are already defined by source code 
     -> Add unary operator support
@@ -116,63 +116,78 @@ class IfElseManager:
 
     def __str__(self):
         return f"{self.if_nest_level_cntr}({self.current_state})"
+ 
     
+    def transtion_from_waitingForIf_state(self, transition_event):
+        if(transition_event == self.fsm_transition_events[0]):
+            self.current_state = self.fsm_states[4]
+        elif(transition_event == self.fsm_transition_events[5]):
+            self.current_state = self.fsm_states[5]
+        else:
+            self.current_state = self.current_state    
+ 
+    def transition_from_WaitForIfClsBrace(self, transition_event):
+        if(transition_event == self.fsm_transition_events[3]):
+            self.current_state = self.fsm_states[1]
+        elif(transition_event == self.fsm_transition_events[2] or transition_event == self.fsm_transition_events[0]):
+            self.if_nest_level_cntr += 1
+        elif(transition_event == self.fsm_transition_events[5] or transition_event == self.fsm_transition_events[4]):
+            self.current_state = self.fsm_states[5]
+        else:
+            self.current_state = self.current_state
+ 
+    
+    def transition_from_waitForElseifClsBrace(self, transition_event):
+        if(transition_event == self.fsm_transition_events[5] or transition_event == self.fsm_transition_events[4]):
+            self.current_state = self.fsm_states[5]
+        elif(transition_event == self.fsm_transition_events[2] or transition_event == self.fsm_transition_events[0]):
+            self.current_state = self.fsm_states[4]
+            self.if_nest_level_cntr += 1
+        elif(transition_event == self.fsm_transition_events[3]):
+            self.current_state = self.fsm_states[1]
+        else:
+            self.current_state = self.current_state
+
+    def transition_from_NxtCanBeElseOrElseif(self, transition_event):
+        if(transition_event == self.fsm_transition_events[5]):
+            self.current_state = self.fsm_states[2]
+        elif(transition_event == self.fsm_transition_events[4]):
+            self.current_state = self.fsm_states[3]
+        elif(transition_event == self.fsm_transition_events[1] and self.if_nest_level_cntr > 0):
+            self.if_nest_level_cntr -= 1
+            self.current_state = self.fsm_states[4]
+        elif(transition_event == self.fsm_transition_events[1] and self.if_nest_level_cntr == self.fsm_transition_events[0]):
+            self.current_state = self.fsm_states[0]
+        else:
+            self.current_state =  self.current_state        
+
+
+    def transition_from_waitForElseClsBrace(self, transition_event):
+        if(transition_event == self.fsm_transition_events[5] or transition_event == self.fsm_transition_events[4]):
+            self.current_state = self.fsm_states[5]
+        elif(transition_event == self.fsm_transition_events[0] or transition_event == self.fsm_transition_events[2]):
+            self.if_nest_level_cntr += 1
+            self.current_state = self.fsm_states[4]
+        elif(transition_event == self.fsm_transition_events[3] and self.if_nest_level_cntr > 0):
+            self.if_nest_level_cntr -= 1
+            self.current_state = self.fsm_states[4]
+        elif(transition_event == self.fsm_transition_events[1] and self.if_nest_level_cntr == 0):
+            self.current_state = self.fsm_states[0]
+        else:
+            self.current_state =  self.current_state          
+
     
     def update_fsm_state(self, transition_event):
         if(self.current_state == self.fsm_states[0]):
-            if(transition_event == 0):
-                self.current_state = self.fsm_states[4]
-            elif(transition_event == 5):
-                self.current_state = self.fsm_states[5]
-            else:
-                self.current_state = self.current_state               
-                
+           self.transtion_from_waitingForIf_state(transition_event)
         elif(self.current_state == self.fsm_states[4]):
-            if(transition_event == 3):
-                self.current_state = self.fsm_states[1]
-            elif(transition_event == 2 or transition_event == 0):
-                self.if_nest_level_cntr += 1
-            elif(transition_event == 5 or transition_event == 4):
-                self.current_state = self.fsm_states[5]
-            else:
-                self.current_state = self.current_state
-            
+            self.transition_from_WaitForIfClsBrace(transition_event)
         elif(self.current_state == self.fsm_states[3]):
-            if(transition_event == 5 or transition_event == 4):
-                self.current_state = self.fsm_states[5]
-            elif(transition_event == 2 or transition_event == 0):
-                self.current_state = self.fsm_states[4]
-                self.if_nest_level_cntr += 1
-            elif(transition_event == 3):
-                self.current_state = self.fsm_states[1]
-            else:
-                self.current_state = self.current_state
-                
+            self.transition_from_waitForElseifClsBrace(transition_event)
         elif(self.current_state == self.fsm_states[1]):
-            if(transition_event == 5):
-                self.current_state = self.fsm_states[2]
-            elif(transition_event == 4):
-                self.current_state = self.fsm_states[3]
-            elif(transition_event == 1 and self.if_nest_level_cntr > 0):
-                self.if_nest_level_cntr -= 1
-                self.current_state = self.fsm_states[4]
-            elif(transition_event == 1 and self.if_nest_level_cntr == 0):
-                self.current_state = self.fsm_states[0]
-            else:
-                self.current_state =  self.current_state
-                
+            self.transition_from_NxtCanBeElseOrElseif(transition_event)
         elif( self.current_state ==  self.fsm_states[2]):
-            if(transition_event == 5 or transition_event == 4):
-                self.current_state = self.fsm_states[5]
-            elif(transition_event == 4):
-                self.current_state = self.fsm_states[3]
-            elif(transition_event == 3 and self.if_nest_level_cntr > 0):
-                self.current_state = self.fsm_states[4]
-                self.if_nest_level_cntr -= 1
-            elif(transition_event == 1 and self.if_nest_level_cntr == 0):
-                self.current_state = self.fsm_states[0]
-            else:
-                self.current_state =  self.current_state  
+            self.transition_from_waitForElseClsBrace(transition_event)
         else:
             self.current_state =  self.current_state
 #--------- END of comment class----------#     
@@ -209,7 +224,6 @@ class Program_obj:
         self.tmp_var_cnt = 0
         self.open_cbrace_cntr = 0
         self.elseif_expecting_if_stmt = 0
-        self.if_nest_level_cntr = 0
         self.if_else_mngr = IfElseManager()
         
     def __str__(self):
@@ -374,7 +388,6 @@ class Program_obj:
             print(cond_str_to_parse)
             if(self.expression_syntax_parser(cond_str_to_parse, line, ln_num)):
                 print("INFO: if...else branch statement at line: " + str(ln_num) + ': ' + line)
-                self.if_nest_level_cntr += 1
                 self.chk_cbrace_reqmnt_n_upd(line, ln_num, 1)
                 self.parse_event_seq_cntr += 1
                 self.parse_event_sequence_dict[self.parse_event_seq_cntr] = ('BRANCH', cond_temp_var)
@@ -387,7 +400,7 @@ class Program_obj:
         elseif_stmt_mstch_obj = re.search("^\s*" + self.re_elseif_else, line)
         else_w_cbrace_match_obj = re.search("^\s*" + self.re_else_only_w_brackt, line)
         print(if_stmt_match_obj)
-        if(if_stmt_match_obj and self.if_else_mngr.current_state == self.if_else_mngr.fsm_states[0]):
+        if(if_stmt_match_obj and (self.if_else_mngr.current_state == self.if_else_mngr.fsm_states[0] or self.if_else_mngr.current_state == self.if_else_mngr.fsm_states[2])):
             self.if_else_condition_chkr(line, ln_num, stmt_type=0)
             self.if_else_mngr.update_fsm_state(0)
             return 1
@@ -595,7 +608,7 @@ def start_fl_parse(file_lns):
         print(prog_obj.current_scope_var_list)
         print(prog_obj.scope_var_lst_stck)
         print(prog_obj.done_scope_var_lst_stck) 
-        print(prog_obj.if_else_mngr.current_state)
+        print("TEST: if..else current state: ",prog_obj.if_else_mngr.current_state)
         #print(prog_obj.parse_event_sequence_dict)
         for key, value in prog_obj.parse_event_sequence_dict.items():
             print(f"{key}: {value}")

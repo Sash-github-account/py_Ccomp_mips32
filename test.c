@@ -3,6 +3,8 @@
 
 int main ()
 {
+
+
 int a, b, n;
       //void main ()
 int c;
@@ -25,4 +27,12 @@ k1 =(a + b) > c && (d - b) < a ;
 var2=(x*y)!=z||(x/y)==2;
 }
 
+else
+if
+((a + b) > c)
+{
+  int k1,var2,x ;
+var2=(x*y)!=z;
+}else{ if(b < a){}}c=0;
+c=1;
 }
