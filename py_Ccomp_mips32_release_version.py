@@ -4,13 +4,13 @@ Created on Sun Jun 23 12:50:59 2024
 
 @author: nsash
 
-Version : 10: 
-    -> Added FSM spec diagram for if-elseif-else interdependency management
-    -> Initial code for if-elseif-else management class
+Version : 11: 
+    -> Added file pre-compile re-formatting function
+    -> Added if-elseif-else manager class to maintain state of nested if else - still has bugs
     
 Opens:    
-    -> map out the implementation details of if-elseif-else management interaction with main program object
-    -> else if{}, else{}, switch case implementation
+    -> clean if else manager bugs
+    -> switch case implementation
     -> In expression analysis stage, before creating temporary variables, check if they are already defined by source code 
     -> Add unary operator support
     -> add support for pointers
@@ -93,8 +93,22 @@ class Comment:
 
 # IfElseManager class, stores info about comment lines in a file, in a dict #
 class IfElseManager:
-    fsm_states = ['waiting_for_if', 'waiting_for_open_cbrace', 'waiting_for_if_cls_cbrace', 'nxt_can_be_else_or_elseif', 'waiting_for_elseif_opn_cbrace', 'waiting_for_elseif_cls_cbrace', 'waiting_for_else_or_if', 'waiting_for_else']
+    fsm_states = [0, #'waiting for  if ',
+    1, #'nxt can be else or else if',
+    2, #'waiting for else cls brace',
+    3, #'waiting for else if cls brace',
+    4, #'waiting for if cls brace',
+    5] #'error, exit'
 
+    fsm_transition_events = [
+        0, #'if with '
+        1, #any code stmt
+        2, #nested if 
+        3, #got '}'
+        4, #got else if
+        5  #got else 
+        ]
+    
     def __init__(self):
         self.if_nest_level_cntr = 0
         self.current_state = self.fsm_states[0]
@@ -104,7 +118,63 @@ class IfElseManager:
         return f"{self.if_nest_level_cntr}({self.current_state})"
     
     
-
+    def update_fsm_state(self, transition_event):
+        if(self.current_state == self.fsm_states[0]):
+            if(transition_event == 0):
+                self.current_state = self.fsm_states[4]
+            elif(transition_event == 5):
+                self.current_state = self.fsm_states[5]
+            else:
+                self.current_state = self.current_state               
+                
+        elif(self.current_state == self.fsm_states[4]):
+            if(transition_event == 3):
+                self.current_state = self.fsm_states[1]
+            elif(transition_event == 2 or transition_event == 0):
+                self.if_nest_level_cntr += 1
+            elif(transition_event == 5 or transition_event == 4):
+                self.current_state = self.fsm_states[5]
+            else:
+                self.current_state = self.current_state
+            
+        elif(self.current_state == self.fsm_states[3]):
+            if(transition_event == 5 or transition_event == 4):
+                self.current_state = self.fsm_states[5]
+            elif(transition_event == 2 or transition_event == 0):
+                self.current_state = self.fsm_states[4]
+                self.if_nest_level_cntr += 1
+            elif(transition_event == 3):
+                self.current_state = self.fsm_states[1]
+            else:
+                self.current_state = self.current_state
+                
+        elif(self.current_state == self.fsm_states[1]):
+            if(transition_event == 5):
+                self.current_state = self.fsm_states[2]
+            elif(transition_event == 4):
+                self.current_state = self.fsm_states[3]
+            elif(transition_event == 1 and self.if_nest_level_cntr > 0):
+                self.if_nest_level_cntr -= 1
+                self.current_state = self.fsm_states[4]
+            elif(transition_event == 1 and self.if_nest_level_cntr == 0):
+                self.current_state = self.fsm_states[0]
+            else:
+                self.current_state =  self.current_state
+                
+        elif( self.current_state ==  self.fsm_states[2]):
+            if(transition_event == 5 or transition_event == 4):
+                self.current_state = self.fsm_states[5]
+            elif(transition_event == 4):
+                self.current_state = self.fsm_states[3]
+            elif(transition_event == 3 and self.if_nest_level_cntr > 0):
+                self.current_state = self.fsm_states[4]
+                self.if_nest_level_cntr -= 1
+            elif(transition_event == 1 and self.if_nest_level_cntr == 0):
+                self.current_state = self.fsm_states[0]
+            else:
+                self.current_state =  self.current_state  
+        else:
+            self.current_state =  self.current_state
 #--------- END of comment class----------#     
 
 
@@ -119,7 +189,10 @@ class Program_obj:
     re_get_var_name = "[a-zA-Z_]+[0-9a-zA-Z_]*"
     re_get_exp = "=\s*[=<>&!\|a-zA-z_\s\(\)\+\-\/\*\^\%0-9]*\s*"
     re_var_or_num_non_capture = "(?:" + re_get_var_name + "|[0-9]+)"
-    re_if_stmt = "if\s*\((.*)\)\s*{?\s*"
+    re_if_stmt = "if\s*\((.*)\)\s*{\s*"
+    re_elseif_else = "else\s+if\s*\((.*)\)\s*{\s*"
+    re_elseif_split_lines_else_chk = '\s*else\s*'
+    re_else_only_w_brackt = "\s*else\s*{\s*"
     operator_lst_precedence_h2l = ['^', '/', '*', '%', '+', '-', '<', '>', '<=', '>=', '==', '!=', '&&', '||']
     
     def __init__(self, svr_lvl):
@@ -135,6 +208,9 @@ class Program_obj:
         self.done_scope_var_lst_stck = []
         self.tmp_var_cnt = 0
         self.open_cbrace_cntr = 0
+        self.elseif_expecting_if_stmt = 0
+        self.if_nest_level_cntr = 0
+        self.if_else_mngr = IfElseManager()
         
     def __str__(self):
         return f"(Main funtion at line: {self.mn_fn_def_ln_num})"
@@ -286,21 +362,42 @@ class Program_obj:
         return var_already_declrd_lst
 
 
-    def chk_if_else_syntx_upd(self, line, ln_num):
-        if_stmt_match_obj = re.search("^\s*" + self.re_if_stmt, line)
-        print(if_stmt_match_obj)
-        if(if_stmt_match_obj):
+
+    def if_else_condition_chkr(self, line, ln_num, stmt_type):
             cond_temp_var = "COND_var_"+str(self.tmp_var_cnt)
             self.tmp_var_cnt += 1           
-            cond_str_to_parse = [cond_temp_var + '=' +  re.findall("^\s*" + self.re_if_stmt, line)[0].replace(' ', '').strip(' ')]           
+            if stmt_type==0:
+                chk_stmt = self.re_if_stmt
+            else:
+                chk_stmt = self.re_elseif_else
+            cond_str_to_parse = [cond_temp_var + '=' +  re.findall("^\s*" + chk_stmt, line)[0].replace(' ', '').strip(' ')]           
             print(cond_str_to_parse)
             if(self.expression_syntax_parser(cond_str_to_parse, line, ln_num)):
                 print("INFO: if...else branch statement at line: " + str(ln_num) + ': ' + line)
+                self.if_nest_level_cntr += 1
                 self.chk_cbrace_reqmnt_n_upd(line, ln_num, 1)
                 self.parse_event_seq_cntr += 1
                 self.parse_event_sequence_dict[self.parse_event_seq_cntr] = ('BRANCH', cond_temp_var)
             else:
                 self.print_error_msg_ext("ERROR: Failed condition evaluation at line: ", line, ln_num)
+
+
+    def chk_if_else_syntx_upd(self, line, ln_num):
+        if_stmt_match_obj = re.search("^\s*" + self.re_if_stmt, line)
+        elseif_stmt_mstch_obj = re.search("^\s*" + self.re_elseif_else, line)
+        else_w_cbrace_match_obj = re.search("^\s*" + self.re_else_only_w_brackt, line)
+        print(if_stmt_match_obj)
+        if(if_stmt_match_obj and self.if_else_mngr.current_state == self.if_else_mngr.fsm_states[0]):
+            self.if_else_condition_chkr(line, ln_num, stmt_type=0)
+            self.if_else_mngr.update_fsm_state(0)
+            return 1
+        elif(elseif_stmt_mstch_obj and self.if_else_mngr.current_state == self.if_else_mngr.fsm_states[1]):
+            self.if_else_condition_chkr(line, ln_num, stmt_type=1)
+            self.if_else_mngr.update_fsm_state(4)
+            return 1
+        elif(else_w_cbrace_match_obj and self.if_else_mngr.current_state == self.if_else_mngr.fsm_states[1]):
+            self.chk_cbrace_reqmnt_n_upd(line, ln_num, 1)
+            self.if_else_mngr.update_fsm_state(5)
             return 1
         else:
             return 0
@@ -355,6 +452,7 @@ class Program_obj:
                             self.print_error_msg_ext("ERROR: Undeclared variable at line: ", line, ln_num)
                         else:
                             self.expression_syntax_parser(var_n_expn_lst, line, ln_num)
+            self.if_else_mngr.update_fsm_state(1)
             return 1
         else:
             return 0
@@ -408,6 +506,7 @@ class Program_obj:
                     if(self.open_cbrace_cntr == 0):
                         self.expecting_cls_cbrace = 0
                     print("INFO: Found cls cbrace at line: " + str(ln_num) + " " + line)
+                    self.if_else_mngr.update_fsm_state(3)
                     return 1
         else:
             return 0
@@ -459,7 +558,33 @@ def get_file_lines_list(flenme):
     fl_ln_lst = fleptr.readlines()
     return fl_ln_lst
 
+def join_file_lines(fl_ln_lst):
+    file_lines_new_line_rmd = ' '.join([i.strip('\n') for i in  fl_ln_lst])
+    return file_lines_new_line_rmd
 
+def splite_file_lines_at_brace_or_semicolon(file_lines_new_line_rmd):
+    for_lst = re.findall("\s*for\s*(\(.*?;.*?;.*?\))\s*{\s*", file_lines_new_line_rmd)
+    for condlst in for_lst:
+        file_lines_new_line_rmd = re.sub(condlst, '_tmp_', file_lines_new_line_rmd)
+    file_lines_new_line_rmd = file_lines_new_line_rmd.replace(';', ';\n')
+    file_lines_new_line_rmd = file_lines_new_line_rmd.replace('{', '{\n')
+    file_lines_new_line_rmd = file_lines_new_line_rmd.replace('}', '\n}\n')  
+    for condlst in for_lst:
+        file_lines_new_line_rmd = file_lines_new_line_rmd.replace('_tmp_', condlst, count=1)
+    split_lines = file_lines_new_line_rmd.split('\n')
+    return split_lines
+
+def reformat_n_comments_rmd_file_lines(fl_ln_lst):
+    fllst_cmnt_rmd = []
+    for line_num in range(len(fl_ln_lst)):
+        line_n = line_num+1
+        if(Comment_obj.chk_cmnt_n_upd(fl_ln_lst[line_num], line_n)):
+            continue
+        else:
+            fllst_cmnt_rmd.append(fl_ln_lst[line_num])
+    file_lines_new_line_rmd = join_file_lines(fllst_cmnt_rmd)
+    formatted_file_lns = splite_file_lines_at_brace_or_semicolon(file_lines_new_line_rmd)
+    return formatted_file_lns
 
 def start_fl_parse(file_lns):
     prog_obj = Program_obj(default_svr_lvl)
@@ -469,8 +594,8 @@ def start_fl_parse(file_lns):
         print("TEST: Event seq:")
         print(prog_obj.current_scope_var_list)
         print(prog_obj.scope_var_lst_stck)
-        print(prog_obj.done_scope_var_lst_stck)
-        
+        print(prog_obj.done_scope_var_lst_stck) 
+        print(prog_obj.if_else_mngr.current_state)
         #print(prog_obj.parse_event_sequence_dict)
         for key, value in prog_obj.parse_event_sequence_dict.items():
             print(f"{key}: {value}")
@@ -502,10 +627,8 @@ def start_fl_parse(file_lns):
         elif(prog_obj.chk_if_else_syntx_upd(file_lns[line_num], line_n)):
             continue
         else:
-            print("WIP, line num: " + str(line_n))
-                       
-        
-    print(prog_obj.expecting_cls_cbrace)
+            prog_obj.print_error_msg_ext("WIP: UNKNOWN syntax at line: ", file_lns[line_num], line_n)          
+    print(prog_obj.expecting_cls_cbrace)   
     if(prog_obj.expecting_cls_cbrace != 0):
         prog_obj.print_error_msg_ext("ERROR: unclosed { in program: line:", file_lns[len(file_lns)-1], len(file_lns)-1)
         # Check for loop syntax and upd loop state var #
@@ -518,6 +641,9 @@ if(__name__ == "__main__"):
     flist = get_file_list_for_compile()
     for fl in flist:
         fl_lns = get_file_lines_list(fl)
-        start_fl_parse(fl_lns)
+        print(fl_lns)
+        final_fl_lns = reformat_n_comments_rmd_file_lines(fl_lns)
+        print('\n'.join(final_fl_lns))
+        start_fl_parse(final_fl_lns)
     print("Program runtime:")
     print(f"--- {time.time() - start_time:.6f} seconds ---")
