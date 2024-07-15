@@ -4,7 +4,7 @@ Created on Sun Jun 23 12:50:59 2024
 
 @author: nsash
 
-Version : 11: 
+Version : 12: 
     -> Updated if-else flow diagram with labels
     -> fixed bugs: transition from 'waiting for else }' state when 'got nested if' event occurs
     -> re-organized IfElseManager methods
