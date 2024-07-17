@@ -4,13 +4,15 @@ Created on Sun Jun 23 12:50:59 2024
 
 @author: nsash
 
-Version : 12: 
-    -> Updated if-else flow diagram with labels
-    -> fixed bugs: transition from 'waiting for else }' state when 'got nested if' event occurs
-    -> re-organized IfElseManager methods
+Version : 13: 
+    -> Switch case statement implemented
+    -> Flow diagram for switch case
+    -> SwitchCaseManager class added for handling switch case
+    -> made modifications to Program method: chk_cbrace_reqmnt_n_upd() and module: start_fl_parse()
     
-Opens:    
-    -> switch case implementation
+Opens: 
+    -> Add support for break statment
+    -> case value handling at back-end
     -> In expression analysis stage, before creating temporary variables, check if they are already defined by source code 
     -> Add unary operator support
     -> add support for pointers
@@ -18,6 +20,8 @@ Opens:
     
 Enhancements:
     -> Add support for reporting warnings and different verbosities
+    -> Create separate variable scope manager class
+    -> Create separate print class?
 
 C compiler for MIPS-NS ISA
     -> Targeting 32 bit 5 stage MIPS processor that I implemented on De10-Nano FPGA
@@ -35,6 +39,7 @@ References + credits:
     -> copilot
     -> chatGPT
     -> https://www.programiz.com/c-programming/online-compiler/
+    -> https://www.geeksforgeeks.org/c-switch-statement/
     -> https://www.geeksforgeeks.org/c-pointers/
     -> https://www.geeksforgeeks.org/variables-in-c/
     -> https://www.geeksforgeeks.org/decision-making-c-cpp/
@@ -44,6 +49,7 @@ References + credits:
     -> https://en.wikipedia.org/wiki/Shunting_yard_algorithm
     -> https://stackoverflow.com/questions/24256463/arithmetic-calculation-for-bodmas-in-java
     -> https://stackoverflow.com/questions/1038824/how-do-i-remove-a-substring-from-the-end-of-a-string-remove-a-suffix-of-the-str
+    -> https://stackoverflow.com/questions/43106905/what-is-the-best-way-to-check-if-a-variable-is-a-list
 """
 # Import required libs #
 import sys
@@ -91,14 +97,16 @@ class Comment:
 
 
 
-# IfElseManager class, stores info about comment lines in a file, in a dict #
+# IfElseManager class, stores maintains nesting state of IFelse branch statement #
 class IfElseManager:
-    fsm_states = [0, #'waiting for  if ',
-    1, #'nxt can be else or else if',
-    2, #'waiting for else cls brace',
-    3, #'waiting for else if cls brace',
-    4, #'waiting for if cls brace',
-    5] #'error, exit'
+    fsm_states = [
+        0, #'waiting for  if ',
+        1, #'nxt can be else or else if',
+        2, #'waiting for else cls brace',
+        3, #'waiting for else if cls brace',
+        4, #'waiting for if cls brace',
+        5 #'error, exit'
+        ]
 
     fsm_transition_events = [
         0, #'if with '
@@ -190,10 +198,136 @@ class IfElseManager:
             self.transition_from_waitForElseClsBrace(transition_event)
         else:
             self.current_state =  self.current_state
-#--------- END of comment class----------#     
+#--------- END of IfElseManager class----------#     
 
 
 
+
+
+# SwitchCaseManager class, stores maintains nesting state of switch-case branch statement #
+class SwitchCaseManager:
+    fsm_states = [
+    0, # waiting for switch,
+    1, # waiting for default,
+    2, # waiting for switch statement closure,
+    3, # error, exit,
+    ] 
+
+    fsm_transition_events = [
+        0, # got switch w/ valid expn
+        1, # got {
+        2, # got code stmt
+        3, # got default
+        4, # got }
+        5  # got case
+        ]    
+     
+    def __init__(self):
+        self.current_state = self.fsm_states[0]
+        self.sw_int_opnbr_stk = []
+        self.switch_nest_lvl = 0;
+        self.cur_int_opn_brc_cnt = 0
+        self.cur_sw_deflt_defnd = 0
+        self.cur_sw_case_vals = []
+
+    def __str__(self):
+        return f"{self.sw_int_opnbr_stk}({self.switch_nest_lvl})({self.cur_int_opn_brc_cnt})({self.cur_sw_deflt_defnd})({self.cur_sw_case_vals})"
+ 
+    def nstd_sw_push_stk_n_upd(self):
+        self.sw_int_opnbr_stk.append((self.cur_int_opn_brc_cnt, self.cur_sw_deflt_defnd, self.cur_sw_case_vals));
+        self.cur_int_opn_brc_cnt = 0;
+        self.switch_nest_lvl += 1;
+        self.cur_int_opn_brc_cnt += 1
+ 
+
+    def chk_int_open_brace_n_upd_state(self):
+        if(self.cur_sw_deflt_defnd == 0):
+            self.current_state = self.fsm_states[1]
+        else:
+            self.current_state = self.fsm_states[2]
+    
+    def process_cls_brace_transitions(self):
+        if(self.cur_int_opn_brc_cnt == 1 and self.switch_nest_lvl == 1):
+            self.switch_nest_lvl -= 1
+            self.cur_int_opn_brc_cnt -= 1
+            self.current_state = self.fsm_states[0]
+        else:
+            if(self.cur_int_opn_brc_cnt > 1):
+                self.cur_int_opn_brc_cnt -= 1
+                self.chk_int_open_brace_n_upd_state()
+            else:
+                self.switch_nest_lvl -= 1
+                self.cur_int_opn_brc_cnt, self.cur_sw_deflt_defnd, self.cur_sw_case_vals = self.sw_int_opnbr_stk.pop()
+                self.chk_int_open_brace_n_upd_state()
+        
+        
+    def process_case_stmt_for_cur_sw(self, case_value):
+        if case_value in self.cur_sw_case_vals:
+            self.current_state = self.fsm_states[3]
+        else:
+            self.cur_sw_case_vals.append(case_value)
+    
+    
+    def transition_from_waitForSwitch_state(self, te):
+        if(te == self.fsm_transition_events[0]):
+            self.switch_nest_lvl += 1;
+            self.cur_int_opn_brc_cnt += 1;
+            self.current_state = self.fsm_states[1]
+        elif(te == self.fsm_transition_events[2]):
+            self.current_state = self.current_state
+        elif(te == self.fsm_transition_events[3] or te == self.fsm_transition_events[5]):
+            self.current_state = self.fsm_states[3]
+        else:
+            self.current_state = self.current_state
+            
+        
+    def transition_from_waitForDefault_state(self, te, case_value):
+        if(te == self.fsm_transition_events[0]):
+            self.nstd_sw_push_stk_n_upd()
+        elif(te == self.fsm_transition_events[1]):
+            self.cur_int_opn_brc_cnt += 1
+        elif(te == self.fsm_transition_events[2]):
+            self.current_state = self.current_state
+        elif(te == self.fsm_transition_events[3]):
+            self.cur_sw_deflt_defnd = 1
+            self.current_state = self.fsm_states[2]
+        elif(te == self.fsm_transition_events[4]):
+            self.process_cls_brace_transitions()
+        elif(te == self.fsm_transition_events[5]):
+            self.process_case_stmt_for_cur_sw(case_value)
+        else:
+            self.current_state = self.current_state
+            
+        
+    def transition_from_waitForSwStmtCls_state(self, te, case_value):
+        if(te == self.fsm_transition_events[0]):
+            self.nstd_sw_push_stk_n_upd()
+            self.cur_sw_deflt_defnd = 0
+            self.current_state = self.fsm_states[1]
+        elif(te == self.fsm_transition_events[1]):
+            self.cur_int_opn_brc_cnt += 1
+        elif(te == self.fsm_transition_events[2]):
+            self.current_state = self.current_state
+        elif(te == self.fsm_transition_events[3]):
+            self.current_state = self.fsm_states[3]
+        elif(te == self.fsm_transition_events[4]):
+            self.process_cls_brace_transitions()
+        elif(te == self.fsm_transition_events[5]):
+            self.process_case_stmt_for_cur_sw(case_value)
+        else:
+            self.current_state = self.current_state
+            
+    
+    def update_fsm_state(self, transition_event, case_value = None):
+        if(self.current_state == self.fsm_states[0]):
+            self.transition_from_waitForSwitch_state(transition_event)
+        elif(self.current_state == self.fsm_states[1]):
+            self.transition_from_waitForDefault_state(transition_event, case_value)
+        elif(self.current_state == self.fsm_states[2]):
+            self.transition_from_waitForSwStmtCls_state(transition_event, case_value)
+        else:
+            self.current_state =  self.current_state
+#--------- END of SwitchCaseManager class----------#     
 
 
 
@@ -208,6 +342,9 @@ class Program_obj:
     re_elseif_else = "else\s+if\s*\((.*)\)\s*{\s*"
     re_elseif_split_lines_else_chk = '\s*else\s*'
     re_else_only_w_brackt = "\s*else\s*{\s*"
+    re_detect_switch_stmt = "^\s*switch\s*\((.*)\)\s*{\s*"
+    re_detect_case_n_value = "^\s*case\s*([0-9]+)\s*:\s*"
+    re_detect_sw_default_stmt = "^\s*default\s*:\s*"
     operator_lst_precedence_h2l = ['^', '/', '*', '%', '+', '-', '<', '>', '<=', '>=', '==', '!=', '&&', '||']
     
     def __init__(self, svr_lvl):
@@ -223,8 +360,8 @@ class Program_obj:
         self.done_scope_var_lst_stck = []
         self.tmp_var_cnt = 0
         self.open_cbrace_cntr = 0
-        self.elseif_expecting_if_stmt = 0
         self.if_else_mngr = IfElseManager()
+        self.sw_case_mngr = SwitchCaseManager()
         
     def __str__(self):
         return f"(Main funtion at line: {self.mn_fn_def_ln_num})"
@@ -377,17 +514,22 @@ class Program_obj:
 
 
 
-    def if_else_condition_chkr(self, line, ln_num, stmt_type):
+    def branch_condition_chkr(self, line, ln_num, stmt_type):
             cond_temp_var = "COND_var_"+str(self.tmp_var_cnt)
             self.tmp_var_cnt += 1           
             if stmt_type==0:
                 chk_stmt = self.re_if_stmt
-            else:
+                print_stmt = "if...else"
+            elif(stmt_type==1):
                 chk_stmt = self.re_elseif_else
+                print_stmt = "else if()"
+            elif(stmt_type==2):
+                chk_stmt = self.re_detect_switch_stmt  
+                print_stmt = "switch"                    
             cond_str_to_parse = [cond_temp_var + '=' +  re.findall("^\s*" + chk_stmt, line)[0].replace(' ', '').strip(' ')]           
             print(cond_str_to_parse)
             if(self.expression_syntax_parser(cond_str_to_parse, line, ln_num)):
-                print("INFO: if...else branch statement at line: " + str(ln_num) + ': ' + line)
+                print("INFO:" + print_stmt + " branch statement at line: " + str(ln_num) + ': ' + line)
                 self.chk_cbrace_reqmnt_n_upd(line, ln_num, 1)
                 self.parse_event_seq_cntr += 1
                 self.parse_event_sequence_dict[self.parse_event_seq_cntr] = ('BRANCH', cond_temp_var)
@@ -395,17 +537,50 @@ class Program_obj:
                 self.print_error_msg_ext("ERROR: Failed condition evaluation at line: ", line, ln_num)
 
 
+
+    def chk_switch_case_n_upd(self, line, ln_num):
+        sw_stmt_match_obj = re.search(self.re_detect_switch_stmt, line)
+        case_stmt_match_obj = re.search(self.re_detect_case_n_value, line)
+        default_stmt_match_obj = re.search(self.re_detect_sw_default_stmt, line)
+        if(sw_stmt_match_obj):
+            print("INFO: Detected switch statement: " + line)
+            self.branch_condition_chkr(line, ln_num, 2)
+            self.sw_case_mngr.update_fsm_state(self.sw_case_mngr.fsm_transition_events[0])
+            if(self.sw_case_mngr.current_state == self.sw_case_mngr.fsm_states[3]):
+                return 0
+            else:
+                return 1
+        elif(case_stmt_match_obj):
+            print("INFO: Detected case statement: line:" + line)
+            self.sw_case_mngr.update_fsm_state(self.sw_case_mngr.fsm_transition_events[5], re.findall(self.re_detect_case_n_value, line)[0].replace(' ', '').strip(' '))
+            print(self.sw_case_mngr.current_state)
+            if(self.sw_case_mngr.current_state == self.sw_case_mngr.fsm_states[3]):
+                return 0
+            else:
+                return 1
+        elif(default_stmt_match_obj):
+            print("INFO: Detected default statement: " + line)
+            self.sw_case_mngr.update_fsm_state(self.sw_case_mngr.fsm_transition_events[3])
+            if(self.sw_case_mngr.current_state == self.sw_case_mngr.fsm_states[3]):
+                return 0
+            else:
+                return 1
+        else:
+            return 0
+        
+        
+
     def chk_if_else_syntx_upd(self, line, ln_num):
         if_stmt_match_obj = re.search("^\s*" + self.re_if_stmt, line)
         elseif_stmt_mstch_obj = re.search("^\s*" + self.re_elseif_else, line)
         else_w_cbrace_match_obj = re.search("^\s*" + self.re_else_only_w_brackt, line)
         print(if_stmt_match_obj)
         if(if_stmt_match_obj and (self.if_else_mngr.current_state == self.if_else_mngr.fsm_states[0] or self.if_else_mngr.current_state == self.if_else_mngr.fsm_states[2])):
-            self.if_else_condition_chkr(line, ln_num, stmt_type=0)
+            self.branch_condition_chkr(line, ln_num, stmt_type=0)
             self.if_else_mngr.update_fsm_state(0)
             return 1
         elif(elseif_stmt_mstch_obj and self.if_else_mngr.current_state == self.if_else_mngr.fsm_states[1]):
-            self.if_else_condition_chkr(line, ln_num, stmt_type=1)
+            self.branch_condition_chkr(line, ln_num, stmt_type=1)
             self.if_else_mngr.update_fsm_state(4)
             return 1
         elif(else_w_cbrace_match_obj and self.if_else_mngr.current_state == self.if_else_mngr.fsm_states[1]):
@@ -438,7 +613,7 @@ class Program_obj:
                 else:
                     var_only_lst_clndup += [i.strip(' ') for i in var_only_lst]
                     self.upd_var_lst_add_declrtn_event(var_only_lst_clndup)
-                    if(len(var_n_expn_lst) == 1):
+                    if(type(var_n_expn_lst) != list):
                         var_n_expn_lst_filtered = [i.replace(' ', '').strip(' ') for i in [var_n_expn_lst] if '=' in i]
                     else:
                         var_n_expn_lst_filtered = [i.replace(' ', '').strip(' ') for i in var_n_expn_lst if '=' in i]                        
@@ -465,7 +640,8 @@ class Program_obj:
                             self.print_error_msg_ext("ERROR: Undeclared variable at line: ", line, ln_num)
                         else:
                             self.expression_syntax_parser(var_n_expn_lst, line, ln_num)
-            self.if_else_mngr.update_fsm_state(1)
+            self.if_else_mngr.update_fsm_state(self.if_else_mngr.fsm_transition_events[1])
+            self.sw_case_mngr.update_fsm_state(self.sw_case_mngr.fsm_transition_events[2])
             return 1
         else:
             return 0
@@ -477,13 +653,20 @@ class Program_obj:
         if (len(ln_splt_at_cbrace) > 1):
             print("INFO: Found open cbrace at line:" + str(ln_num))
             if(ln_is_mn_fn):
+                print("INFO: Cbrace entered ln_is_mn_fn")
+                self.opn_expt_set_by_swcase = 0
                 self.expecting_opn_cbrace = 0
                 self.expecting_cls_cbrace = 1
                 self.open_cbrace_cntr += 1
                 if(self.current_scope_var_list != []):
                     self.scope_var_lst_stck.append(self.current_scope_var_list)
                     self.current_scope_var_list = []
+                self.sw_case_mngr.update_fsm_state(self.sw_case_mngr.fsm_transition_events[0])
+                # if(self.sw_case_mngr.current_state > 0):
+                #     self.opn_expt_set_by_swcase = 1
+                #     self.expecting_opn_cbrace = 1
             else:
+                print("INFO: Cbrace entered ln_is_mn_fn else")
                 if ((re.search("\s*", ln_splt_at_cbrace[0]))):
                     self.expecting_opn_cbrace = 0
                     self.expecting_cls_cbrace = 1
@@ -491,14 +674,20 @@ class Program_obj:
                     if(self.current_scope_var_list != []):
                         self.scope_var_lst_stck.append(self.current_scope_var_list)
                         self.current_scope_var_list = []
+                    self.sw_case_mngr.update_fsm_state(self.sw_case_mngr.fsm_transition_events[1])
+                    # if(self.sw_case_mngr.current_state > 0):
+                    #     self.opn_expt_set_by_swcase = 1
+                    #     self.expecting_opn_cbrace = 1
                     if(re.search("^\s*$", ln_splt_at_cbrace[1]) ):
                         pass
                     else:
                         self.chk_var_dec_or_assignmnt(ln_splt_at_cbrace[1], ln_num)
                 else:
                     self.print_error_msg_ext("ERROR: Syntax error at line num: ",  line, ln_num)
+            return 1
         else:
             self.expecting_opn_cbrace = 1
+            return 0
 
 
 
@@ -519,7 +708,8 @@ class Program_obj:
                     if(self.open_cbrace_cntr == 0):
                         self.expecting_cls_cbrace = 0
                     print("INFO: Found cls cbrace at line: " + str(ln_num) + " " + line)
-                    self.if_else_mngr.update_fsm_state(3)
+                    self.if_else_mngr.update_fsm_state(self.if_else_mngr.fsm_transition_events[3])
+                    self.sw_case_mngr.update_fsm_state(self.sw_case_mngr.fsm_transition_events[4])
                     return 1
         else:
             return 0
@@ -580,6 +770,7 @@ def splite_file_lines_at_brace_or_semicolon(file_lines_new_line_rmd):
     for condlst in for_lst:
         file_lines_new_line_rmd = re.sub(condlst, '_tmp_', file_lines_new_line_rmd)
     file_lines_new_line_rmd = file_lines_new_line_rmd.replace(';', ';\n')
+    file_lines_new_line_rmd = file_lines_new_line_rmd.replace(':', ':\n')
     file_lines_new_line_rmd = file_lines_new_line_rmd.replace('{', '{\n')
     file_lines_new_line_rmd = file_lines_new_line_rmd.replace('}', '\n}\n')  
     for condlst in for_lst:
@@ -608,7 +799,8 @@ def start_fl_parse(file_lns):
         print(prog_obj.current_scope_var_list)
         print(prog_obj.scope_var_lst_stck)
         print(prog_obj.done_scope_var_lst_stck) 
-        print("TEST: if..else current state: ",prog_obj.if_else_mngr.current_state)
+        print("TEST: if..else current state: ", prog_obj.if_else_mngr.current_state)
+        print("TEST: switch case current state: ", prog_obj.sw_case_mngr.current_state)
         #print(prog_obj.parse_event_sequence_dict)
         for key, value in prog_obj.parse_event_sequence_dict.items():
             print(f"{key}: {value}")
@@ -619,9 +811,6 @@ def start_fl_parse(file_lns):
         elif (re.search("^\s*$", file_lns[line_num])):
             print("INFO: line " + str(line_n) + ' is empty')
             continue
-        # Previous src code line was entry into main fn but with no open cbrace -> chk for that now #
-        elif(prog_obj.expecting_opn_cbrace):
-            prog_obj.chk_cbrace_reqmnt_n_upd(file_lns[line_num], ln_num=line_n, ln_is_mn_fn=0)
         # Check if line has close brace #
         elif(prog_obj.chk_cbrace_closure(file_lns[line_num], line_n)):
             continue
@@ -638,6 +827,11 @@ def start_fl_parse(file_lns):
             continue
         # Check if conditional branch stmt 'if() else if() else' or 'switch() case x:'   and upd brn state vars
         elif(prog_obj.chk_if_else_syntx_upd(file_lns[line_num], line_n)):
+            continue
+        elif(prog_obj.chk_switch_case_n_upd(file_lns[line_num], line_n)):
+            continue
+        # Previous src code line was entry into main fn but with no open cbrace -> chk for that now #
+        elif(prog_obj.chk_cbrace_reqmnt_n_upd(file_lns[line_num], ln_num=line_n, ln_is_mn_fn=1)):
             continue
         else:
             prog_obj.print_error_msg_ext("WIP: UNKNOWN syntax at line: ", file_lns[line_num], line_n)          
