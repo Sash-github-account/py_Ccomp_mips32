@@ -4,15 +4,14 @@ Created on Sun Jun 23 12:50:59 2024
 
 @author: nsash
 
-Version : 13: 
-    -> Switch case statement implemented
-    -> Flow diagram for switch case
-    -> SwitchCaseManager class added for handling switch case
-    -> made modifications to Program method: chk_cbrace_reqmnt_n_upd() and module: start_fl_parse()
+Version : 14: 
+    -> Added back-end support to detect case label by comparing with switch expression
+    -> Added method: get_last_sw_cond_expn_val(), to SwitchCaseManager class, to retrieve temporary variable name in which switch expn for that nest level is stored
+    -> Added 'break' statement parsing and event handling. method: chk_break_stmt_n_upd()
     
 Opens: 
     -> Add support for break statment
-    -> case value handling at back-end
+    -> Add back-end handling of merging point after break statement
     -> In expression analysis stage, before creating temporary variables, check if they are already defined by source code 
     -> Add unary operator support
     -> add support for pointers
@@ -225,7 +224,8 @@ class SwitchCaseManager:
     def __init__(self):
         self.current_state = self.fsm_states[0]
         self.sw_int_opnbr_stk = []
-        self.switch_nest_lvl = 0;
+        self.cur_sw_stmt_cond_expn = ''
+        self.switch_nest_lvl = 0
         self.cur_int_opn_brc_cnt = 0
         self.cur_sw_deflt_defnd = 0
         self.cur_sw_case_vals = []
@@ -234,11 +234,11 @@ class SwitchCaseManager:
         return f"{self.sw_int_opnbr_stk}({self.switch_nest_lvl})({self.cur_int_opn_brc_cnt})({self.cur_sw_deflt_defnd})({self.cur_sw_case_vals})"
  
     def nstd_sw_push_stk_n_upd(self):
-        self.sw_int_opnbr_stk.append((self.cur_int_opn_brc_cnt, self.cur_sw_deflt_defnd, self.cur_sw_case_vals));
+        self.sw_int_opnbr_stk.append((self.cur_int_opn_brc_cnt, self.cur_sw_deflt_defnd, self.cur_sw_case_vals, self.cur_sw_stmt_cond_expn));
         self.cur_int_opn_brc_cnt = 0;
         self.switch_nest_lvl += 1;
         self.cur_int_opn_brc_cnt += 1
- 
+        self.cur_sw_stmt_cond_expn = ''
 
     def chk_int_open_brace_n_upd_state(self):
         if(self.cur_sw_deflt_defnd == 0):
@@ -257,7 +257,7 @@ class SwitchCaseManager:
                 self.chk_int_open_brace_n_upd_state()
             else:
                 self.switch_nest_lvl -= 1
-                self.cur_int_opn_brc_cnt, self.cur_sw_deflt_defnd, self.cur_sw_case_vals = self.sw_int_opnbr_stk.pop()
+                self.cur_int_opn_brc_cnt, self.cur_sw_deflt_defnd, self.cur_sw_case_vals,  self.cur_sw_stmt_cond_expn = self.sw_int_opnbr_stk.pop()
                 self.chk_int_open_brace_n_upd_state()
         
         
@@ -268,10 +268,11 @@ class SwitchCaseManager:
             self.cur_sw_case_vals.append(case_value)
     
     
-    def transition_from_waitForSwitch_state(self, te):
+    def transition_from_waitForSwitch_state(self, te, expn):
         if(te == self.fsm_transition_events[0]):
             self.switch_nest_lvl += 1;
             self.cur_int_opn_brc_cnt += 1;
+            self.cur_sw_stmt_cond_expn = expn
             self.current_state = self.fsm_states[1]
         elif(te == self.fsm_transition_events[2]):
             self.current_state = self.current_state
@@ -318,15 +319,24 @@ class SwitchCaseManager:
             self.current_state = self.current_state
             
     
-    def update_fsm_state(self, transition_event, case_value = None):
+    def update_fsm_state(self, transition_event, sw_expn = '', case_value = ''):
         if(self.current_state == self.fsm_states[0]):
-            self.transition_from_waitForSwitch_state(transition_event)
+            self.transition_from_waitForSwitch_state(transition_event, sw_expn)
         elif(self.current_state == self.fsm_states[1]):
             self.transition_from_waitForDefault_state(transition_event, case_value)
         elif(self.current_state == self.fsm_states[2]):
             self.transition_from_waitForSwStmtCls_state(transition_event, case_value)
         else:
             self.current_state =  self.current_state
+            
+    def get_last_sw_cond_expn_val(self):
+        print("INFO: get_last_sw_cond_expn_val() from switch case manager called. Sending this value:")
+        if self.cur_sw_stmt_cond_expn == '':
+            print("from stack: ",self.sw_int_opnbr_stk[len(self.sw_int_opnbr_stk)-1])
+            return self.sw_int_opnbr_stk[len(self.sw_int_opnbr_stk)-1][3]
+        else:
+            print("from attribute: ", self.cur_sw_stmt_cond_expn)
+            return self.cur_sw_stmt_cond_expn
 #--------- END of SwitchCaseManager class----------#     
 
 
@@ -345,6 +355,7 @@ class Program_obj:
     re_detect_switch_stmt = "^\s*switch\s*\((.*)\)\s*{\s*"
     re_detect_case_n_value = "^\s*case\s*([0-9]+)\s*:\s*"
     re_detect_sw_default_stmt = "^\s*default\s*:\s*"
+    re_break_stmt_dtection = "^\s*break\s*;\s*"
     operator_lst_precedence_h2l = ['^', '/', '*', '%', '+', '-', '<', '>', '<=', '>=', '==', '!=', '&&', '||']
     
     def __init__(self, svr_lvl):
@@ -514,6 +525,17 @@ class Program_obj:
 
 
 
+    def chk_break_stmt_n_upd(self, line, ln_num):
+        print("INFO: detected 'break' statement at line: " + str(ln_num) + ': ' + line)
+        break_stmt_match_obj = re.search(self.re_break_stmt_dtection, line)
+        if(break_stmt_match_obj):
+            self.parse_event_seq_cntr += 1
+            self.parse_event_sequence_dict[self.parse_event_seq_cntr] = ('BREAK', 'SWITCH')
+            return 1
+        else:
+            return 0
+
+
     def branch_condition_chkr(self, line, ln_num, stmt_type):
             cond_temp_var = "COND_var_"+str(self.tmp_var_cnt)
             self.tmp_var_cnt += 1           
@@ -530,7 +552,7 @@ class Program_obj:
             print(cond_str_to_parse)
             if(self.expression_syntax_parser(cond_str_to_parse, line, ln_num)):
                 print("INFO:" + print_stmt + " branch statement at line: " + str(ln_num) + ': ' + line)
-                self.chk_cbrace_reqmnt_n_upd(line, ln_num, 1)
+                self.chk_cbrace_reqmnt_n_upd(line, ln_num, 1, sw_expn=cond_temp_var)
                 self.parse_event_seq_cntr += 1
                 self.parse_event_sequence_dict[self.parse_event_seq_cntr] = ('BRANCH', cond_temp_var)
             else:
@@ -545,15 +567,20 @@ class Program_obj:
         if(sw_stmt_match_obj):
             print("INFO: Detected switch statement: " + line)
             self.branch_condition_chkr(line, ln_num, 2)
-            self.sw_case_mngr.update_fsm_state(self.sw_case_mngr.fsm_transition_events[0])
+            print("INFO: LAST switch_expn value: ", self.parse_event_sequence_dict[self.parse_event_seq_cntr][1])
+            expn = self.parse_event_sequence_dict[self.parse_event_seq_cntr][1]
+            self.sw_case_mngr.update_fsm_state(self.sw_case_mngr.fsm_transition_events[0], sw_expn=expn, case_value='')
             if(self.sw_case_mngr.current_state == self.sw_case_mngr.fsm_states[3]):
                 return 0
             else:
                 return 1
         elif(case_stmt_match_obj):
             print("INFO: Detected case statement: line:" + line)
-            self.sw_case_mngr.update_fsm_state(self.sw_case_mngr.fsm_transition_events[5], re.findall(self.re_detect_case_n_value, line)[0].replace(' ', '').strip(' '))
-            print(self.sw_case_mngr.current_state)
+            case_val =  re.findall(self.re_detect_case_n_value, line)[0].replace(' ', '').strip(' ')
+            self.sw_case_mngr.update_fsm_state(self.sw_case_mngr.fsm_transition_events[5], case_value=case_val)
+            print(self.sw_case_mngr.get_last_sw_cond_expn_val())
+            self.parse_event_seq_cntr += 1
+            self.parse_event_sequence_dict[self.parse_event_seq_cntr] = ('BRANCH_TARG', self.sw_case_mngr.get_last_sw_cond_expn_val() + '==' + case_val)
             if(self.sw_case_mngr.current_state == self.sw_case_mngr.fsm_states[3]):
                 return 0
             else:
@@ -648,7 +675,7 @@ class Program_obj:
         
         
             
-    def chk_cbrace_reqmnt_n_upd(self, line, ln_num = None, ln_is_mn_fn = 0):
+    def chk_cbrace_reqmnt_n_upd(self, line, ln_num = None, ln_is_mn_fn = 0, sw_expn=""):
         ln_splt_at_cbrace = line.split("{")
         if (len(ln_splt_at_cbrace) > 1):
             print("INFO: Found open cbrace at line:" + str(ln_num))
@@ -661,7 +688,7 @@ class Program_obj:
                 if(self.current_scope_var_list != []):
                     self.scope_var_lst_stck.append(self.current_scope_var_list)
                     self.current_scope_var_list = []
-                self.sw_case_mngr.update_fsm_state(self.sw_case_mngr.fsm_transition_events[0])
+                self.sw_case_mngr.update_fsm_state(self.sw_case_mngr.fsm_transition_events[1],  case_value='')
                 # if(self.sw_case_mngr.current_state > 0):
                 #     self.opn_expt_set_by_swcase = 1
                 #     self.expecting_opn_cbrace = 1
@@ -816,6 +843,9 @@ def start_fl_parse(file_lns):
             continue
         # Check syntax for main func entry -> state vars: mn_fn_entered, expecting_opn_cbrace #
         elif(prog_obj.chk_main_fn_entry(file_lns[line_num], line_n)):
+            continue
+        # break statement detection #
+        elif(prog_obj.chk_break_stmt_n_upd(file_lns[line_num], line_n)):
             continue
         # Check for var declaration + optnaly init #
             # If syntx ok =>  push var+val str into var dict #
