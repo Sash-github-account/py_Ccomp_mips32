@@ -4,14 +4,14 @@ Created on Sun Jun 23 12:50:59 2024
 
 @author: nsash
 
-Version : 15: 
-    -> Added do-while manager flow diagram
-    -> Added DoWhileManager class
-    -> Added chk_do_while_loop_n_upd() method to Program_obj class
-    -> Added test C code: test_do_while.c for testing
+Version : 16: 
+    -> Added while manager flow diagram
+    -> Added WhileManager class
+    -> Added chk_while_loop_n_upd() method to Program_obj class
+    -> Added test C code: test_while_loop.c for testing
+    -> Bug fix: nested if condition parse event not getting updated
     
-Opens: 
-    -> Bug: nested if condition parse event not getting updated
+Opens:     
     -> Add back-end handling of merging point after break statement
     -> In expression analysis stage, before creating temporary variables, check if they are already defined by source code 
     -> Add unary operator support
@@ -388,7 +388,7 @@ class DoWhileManager:
         if(te == self.fsm_transition_events[0]):
             self.nstd_do_lvl_cntr += 1
             self.cur_nstd_opn_brace_cntr += 1
-            self.stck_nst_lvl.push(self.cur_nstd_opn_brace_cntr)
+            self.stck_nst_lvl.append(self.cur_nstd_opn_brace_cntr)
         elif(te == self.fsm_transition_events[1]):
             self.current_state = self.fsm_states[3]
         elif(te == self.fsm_transition_events[3]):
@@ -425,10 +425,76 @@ class DoWhileManager:
 #--------- END of DoWhileManager class----------#     
 
 
+# WhileManager class, stores maintains nesting state of do-while loop statement #
+class WhileManager:
+    fsm_states = [
+    0, # wait for while stmt:
+    1, # wait for while cls brace:
+    ] 
+
+    fsm_transition_events = [
+        0, # got while stmt
+        1, # got }:
+        2, # got code stmt:
+        3, # got {:
+        ]   
+
+    def __init__(self):
+        self.current_state = self.fsm_states[0]
+        self.while_nst_lvl_cntr = 0
+        self.cur_nst_lvl_opn_brc = 0
+        self.stk_cur_nst_lvl_opn_brc =[]
+
+    def __str__(self):
+        return f"{self.current_state}({self.stk_cur_nst_lvl_opn_brc})({self.while_nst_lvl_cntr})({self.cur_nst_lvl_opn_brc})"
+  
+
+    def transition_from_waitForWhile_state(self, te):
+        if(te == self.fsm_transition_events[0]):
+            self.while_nst_lvl_cntr += 1
+            self.cur_nst_lvl_opn_brc += 1
+            self.current_state = self.fsm_states[1]
+        else:
+            self.current_state =self.current_state 
+         
+    
+    def transition_from_waitForWhileClsBrace_state(self, te):
+        if(te == self.fsm_transition_events[0]):
+            self.while_nst_lvl_cntr += 1
+            self.cur_nst_lvl_opn_brc += 1
+            self.stk_cur_nst_lvl_opn_brc.append(self.cur_nst_lvl_opn_brc)
+            self.cur_nst_lvl_opn_brc = 0
+        elif(te == self.fsm_transition_events[1]):
+            if(self.cur_nst_lvl_opn_brc == 1):
+                self.while_nst_lvl_cntr -= 1
+                self.cur_nst_lvl_opn_brc = self.stk_cur_nst_lvl_opn_brc.pop()
+                if(self.while_nst_lvl_cntr == 1):
+                    self.current_state = self.fsm_states[0]
+                else:
+                    self.current_state = self.fsm_states[1]
+            else:
+                self.cur_nst_lvl_opn_brc -= 1
+                self.current_state = self.fsm_states[1]
+        elif(te == self.fsm_transition_events[3]):
+            self.cur_nst_lvl_opn_brc += 1
+        else:
+            self.current_state =self.current_state 
+        
+    
+
+    def update_fsm_state(self, transition_event):
+        if(self.current_state == self.fsm_states[0]):
+            self.transition_from_waitForWhile_state(transition_event)
+        elif(self.current_state == self.fsm_states[1]):
+            self.transition_from_waitForWhileClsBrace_state(transition_event)
+        else:
+            self.current_state =  self.current_state    
+#--------- END of WhileManager class----------#     
+
 
 # Program_obj class, stores info about comment lines in a file, in a dict #
 # 1.  #
-class Program_obj:
+class ParserNOperationSeqr:
     re_get_token = "\s*(void|int)"
     re_get_var_name = "[a-zA-Z_]+[0-9a-zA-Z_]*"
     re_get_exp = "=\s*[=<>&!\|a-zA-z_\s\(\)\+\-\/\*\^\%0-9]*\s*"
@@ -462,6 +528,7 @@ class Program_obj:
         self.if_else_mngr = IfElseManager()
         self.sw_case_mngr = SwitchCaseManager()
         self.do_while_mngr = DoWhileManager()
+        self.while_mngr = WhileManager()
         
     def __str__(self):
         return f"(Main funtion at line: {self.mn_fn_def_ln_num})"
@@ -642,12 +709,16 @@ class Program_obj:
                 event_type = 'BRANCH'
             elif(stmt_type == 3):
                 chk_stmt = self.re_detect_while_from_dowhile
+                print_stmt = "while() from do-while"    
+                event_type = 'LOOP'
+            elif(stmt_type == 4):
+                chk_stmt = self.re_detect_while_loop_stmt
                 print_stmt = "while()"    
                 event_type = 'LOOP'
             cond_str_to_parse = [cond_temp_var + '=' +  re.findall("^\s*" + chk_stmt, line)[0].replace(' ', '').strip(' ')]           
             print(cond_str_to_parse)
             if(self.expression_syntax_parser(cond_str_to_parse, line, ln_num)):
-                print("INFO: " + print_stmt + " branch statement at line: " + str(ln_num) + ': ' + line)
+                print("INFO: " + print_stmt + " statement at line: " + str(ln_num) + ': ' + line)
                 self.chk_cbrace_reqmnt_n_upd(line, ln_num, 1, sw_expn=cond_temp_var)
                 self.parse_event_seq_cntr += 1
                 self.parse_event_sequence_dict[self.parse_event_seq_cntr] = (event_type, cond_temp_var)
@@ -655,12 +726,24 @@ class Program_obj:
                 self.print_error_msg_ext("ERROR: Failed condition evaluation at line: ", line, ln_num)
 
 
+    def chk_while_n_upd(self, line, ln_num):
+        print("INFO: Entering while checker for line: " + str(ln_num) + ': ' + line)
+        while_match_obj = re.search(self.re_detect_while_loop_stmt, line)
+        if(while_match_obj):
+            print("INFO: Detected while statement: " + line)
+            self.condition_chkr(line, ln_num, 4)
+            self.while_mngr.update_fsm_state(self.while_mngr.fsm_transition_events[0])
+            return 1
+        else:
+            return 0
 
 
     def chk_do_while_loop_n_upd(self, line, ln_num):
+        print("INFO: Entering do-while checker for line: " + str(ln_num) + ': ' + line)
         do_stmt_match_obj = re.search(self.re_detect_do_stmt, line)
         while_stmt_match_obj = re.search(self.re_detect_while_from_dowhile, line)
         if(do_stmt_match_obj):
+            print("INFO: Detected do statement: " + line)
             self.chk_cbrace_reqmnt_n_upd(line, ln_num, 1)
             self.do_while_mngr.update_fsm_state(self.do_while_mngr.fsm_transition_events[0])
             if(self.do_while_mngr.current_state == self.do_while_mngr.fsm_states[3]):
@@ -668,6 +751,7 @@ class Program_obj:
             else:
                 return 1
         elif(while_stmt_match_obj):
+            print("INFO: Detected while from do-while statement: " + line)
             self.condition_chkr(line, ln_num, 3)
             self.do_while_mngr.update_fsm_state(self.do_while_mngr.fsm_transition_events[1])
             if(self.do_while_mngr.current_state == self.do_while_mngr.fsm_states[3]):
@@ -679,6 +763,7 @@ class Program_obj:
 
 
     def chk_switch_case_n_upd(self, line, ln_num):
+        print("INFO: Entering switch-case checker for line: " + str(ln_num) + ': ' + line)
         sw_stmt_match_obj = re.search(self.re_detect_switch_stmt, line)
         case_stmt_match_obj = re.search(self.re_detect_case_n_value, line)
         default_stmt_match_obj = re.search(self.re_detect_sw_default_stmt, line)
@@ -716,19 +801,24 @@ class Program_obj:
         
 
     def chk_if_else_syntx_upd(self, line, ln_num):
+        print("INFO: Entering if-else checker for line: " + str(ln_num) + ': ' + line)
         if_stmt_match_obj = re.search("^\s*" + self.re_if_stmt, line)
         elseif_stmt_mstch_obj = re.search("^\s*" + self.re_elseif_else, line)
         else_w_cbrace_match_obj = re.search("^\s*" + self.re_else_only_w_brackt, line)
         print(if_stmt_match_obj)
-        if(if_stmt_match_obj and (self.if_else_mngr.current_state == self.if_else_mngr.fsm_states[0] or self.if_else_mngr.current_state == self.if_else_mngr.fsm_states[2])):
+        print(self.if_else_mngr.current_state)
+        if(if_stmt_match_obj and (self.if_else_mngr.current_state == self.if_else_mngr.fsm_states[0] or self.if_else_mngr.current_state == self.if_else_mngr.fsm_states[2] or self.if_else_mngr.current_state == self.if_else_mngr.fsm_states[3] or self.if_else_mngr.current_state == self.if_else_mngr.fsm_states[4])):
+            print("INFO: detected if() statement at line: " + str(ln_num) + ': ' + line)
             self.condition_chkr(line, ln_num, stmt_type=0)
             self.if_else_mngr.update_fsm_state(0)
             return 1
         elif(elseif_stmt_mstch_obj and self.if_else_mngr.current_state == self.if_else_mngr.fsm_states[1]):
+            print("INFO: detected else if() statement at line: " + str(ln_num) + ': ' + line)
             self.condition_chkr(line, ln_num, stmt_type=1)
             self.if_else_mngr.update_fsm_state(4)
             return 1
         elif(else_w_cbrace_match_obj and self.if_else_mngr.current_state == self.if_else_mngr.fsm_states[1]):
+            print("INFO: detected else statement at line: " + str(ln_num) + ': ' + line)
             self.chk_cbrace_reqmnt_n_upd(line, ln_num, 1)
             self.if_else_mngr.update_fsm_state(5)
             return 1
@@ -788,6 +878,7 @@ class Program_obj:
             self.if_else_mngr.update_fsm_state(self.if_else_mngr.fsm_transition_events[1])
             self.sw_case_mngr.update_fsm_state(self.sw_case_mngr.fsm_transition_events[2])
             self.do_while_mngr.update_fsm_state(self.do_while_mngr.fsm_transition_events[2])
+            self.while_mngr.update_fsm_state(self.while_mngr.fsm_transition_events[2])
             return 1
         else:
             return 0
@@ -795,6 +886,7 @@ class Program_obj:
         
             
     def chk_cbrace_reqmnt_n_upd(self, line, ln_num = None, ln_is_mn_fn = 0, sw_expn=""):
+        print("INFO: Entering open brace checker for line: " + str(ln_num) + ': ' + line)
         ln_splt_at_cbrace = line.split("{")
         if (len(ln_splt_at_cbrace) > 1):
             print("INFO: Found open cbrace at line:" + str(ln_num))
@@ -822,6 +914,7 @@ class Program_obj:
                         self.current_scope_var_list = []
                     self.sw_case_mngr.update_fsm_state(self.sw_case_mngr.fsm_transition_events[1])
                     self.do_while_mngr.update_fsm_state(self.do_while_mngr.fsm_transition_events[3])
+                    self.while_mngr.update_fsm_state(self.while_mngr.fsm_transition_events[3])
                     # if(self.sw_case_mngr.current_state > 0):
                     #     self.opn_expt_set_by_swcase = 1
                     #     self.expecting_opn_cbrace = 1
@@ -858,6 +951,7 @@ class Program_obj:
                     self.if_else_mngr.update_fsm_state(self.if_else_mngr.fsm_transition_events[3])
                     self.sw_case_mngr.update_fsm_state(self.sw_case_mngr.fsm_transition_events[4])
                     self.do_while_mngr.update_fsm_state(self.do_while_mngr.fsm_transition_events[4])
+                    self.while_mngr.update_fsm_state(self.while_mngr.fsm_transition_events[1])
                     return 1
         else:
             return 0
@@ -939,7 +1033,7 @@ def reformat_n_comments_rmd_file_lines(fl_ln_lst):
     return formatted_file_lns
 
 def start_fl_parse(file_lns):
-    prog_obj = Program_obj(default_svr_lvl)
+    prog_obj = ParserNOperationSeqr(default_svr_lvl)
     # Go into loop for each line #
     for line_num in range(len(file_lns)):
         line_n = line_num+1
@@ -983,6 +1077,8 @@ def start_fl_parse(file_lns):
             continue
         # Check for loop syntax and upd loop state var #
         elif(prog_obj.chk_do_while_loop_n_upd(file_lns[line_num], line_n)):
+            continue
+        elif(prog_obj.chk_while_n_upd(file_lns[line_num], line_n)):
             continue
         # Previous src code line was entry into main fn but with no open cbrace -> chk for that now #
         elif(prog_obj.chk_cbrace_reqmnt_n_upd(file_lns[line_num], ln_num=line_n, ln_is_mn_fn=1)):
