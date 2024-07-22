@@ -35,4 +35,8 @@ if
 var2=(x*y)!=z;
 }else{ if(b < a){}}c=0;
 c=1;
+int xp;
+xp = a+++--b * c---++a;
+
+for(int i=0; i<5; i++){xp = i*xp+1;xp++;}
 }

@@ -4,12 +4,16 @@ Created on Sun Jun 23 12:50:59 2024
 
 @author: nsash
 
-Version : 16: 
-    -> Added while manager flow diagram
-    -> Added WhileManager class
-    -> Added chk_while_loop_n_upd() method to Program_obj class
-    -> Added test C code: test_while_loop.c for testing
-    -> Bug fix: nested if condition parse event not getting updated
+Version : 17: 
+    -> expanding/re-using while manager class to handle for loop as well: now the class is re-named as: ForWhileLoopManager 
+    -> Added for manager instance of while manager class inparser/operation seqr class
+    -> added method chk_for_loop_n_upd() to parse for loops
+    -> updated condition_chkr() method to handle for loops
+    -> Added support for increment/decrement operations: updated pedmas_assembler() to include inc/dec handling
+    -> Added test code: test_for_loop.c and added expression with inc/dec in test.c to check features that have implemented
+    -> updated file pre-process/formatting function: split_file_lines_at_brace_or_semicolon() to fix bug in the for loop parenthsis capture logic
+    -> for/while loop manager bug fix: updated flow diagem for for-while loop manager: fixed order of poping out the stk when te='got }'
+    -> bug fix: pre-pocessor/formatter for loop condition handling had a bug for for-loop counts>10: doing for_cond replacement from reverse to cover larger numbers before getting to single digits 
     
 Opens:     
     -> Add back-end handling of merging point after break statement
@@ -31,9 +35,7 @@ C compiler for MIPS-NS ISA
     -> No support for pre-processing
     -> No support for function calls, only void main()
     -> Conditionals and loops supported
-    -> Comments only supported at start of line, ie., an entire line can be a comment but there can be no comments in lines where there is code
-    -> Currently supports only one statement per line
-    -> Does not support in-expression increment/decrement operators. Ex:- a= (b++) + d-- + e;
+    -> No in-line comments: Comments only supported at start of line, ie., an entire line can be a comment but there can be no comments in lines where there is code
     -> ternary operator not supported
                     
 
@@ -426,32 +428,32 @@ class DoWhileManager:
 
 
 # WhileManager class, stores maintains nesting state of do-while loop statement #
-class WhileManager:
+class ForWhileLoopManager:
     fsm_states = [
-    0, # wait for while stmt:
-    1, # wait for while cls brace:
-    ] 
+        0, # wait for while/for stmt:
+        1, # wait for while cls brace:
+        ]
 
     fsm_transition_events = [
-        0, # got while stmt
+        0, # got while/for stmt
         1, # got }:
         2, # got code stmt:
         3, # got {:
-        ]   
+        ]
 
     def __init__(self):
         self.current_state = self.fsm_states[0]
-        self.while_nst_lvl_cntr = 0
+        self.while_for_nst_lvl_cntr = 0
         self.cur_nst_lvl_opn_brc = 0
         self.stk_cur_nst_lvl_opn_brc =[]
 
     def __str__(self):
-        return f"{self.current_state}({self.stk_cur_nst_lvl_opn_brc})({self.while_nst_lvl_cntr})({self.cur_nst_lvl_opn_brc})"
+        return f"{self.current_state}({self.stk_cur_nst_lvl_opn_brc})({self.while_for_nst_lvl_cntr})({self.cur_nst_lvl_opn_brc})"
   
 
     def transition_from_waitForWhile_state(self, te):
         if(te == self.fsm_transition_events[0]):
-            self.while_nst_lvl_cntr += 1
+            self.while_for_nst_lvl_cntr += 1
             self.cur_nst_lvl_opn_brc += 1
             self.current_state = self.fsm_states[1]
         else:
@@ -460,17 +462,18 @@ class WhileManager:
     
     def transition_from_waitForWhileClsBrace_state(self, te):
         if(te == self.fsm_transition_events[0]):
-            self.while_nst_lvl_cntr += 1
+            self.while_for_nst_lvl_cntr += 1
             self.cur_nst_lvl_opn_brc += 1
             self.stk_cur_nst_lvl_opn_brc.append(self.cur_nst_lvl_opn_brc)
             self.cur_nst_lvl_opn_brc = 0
         elif(te == self.fsm_transition_events[1]):
-            if(self.cur_nst_lvl_opn_brc == 1):
-                self.while_nst_lvl_cntr -= 1
-                self.cur_nst_lvl_opn_brc = self.stk_cur_nst_lvl_opn_brc.pop()
-                if(self.while_nst_lvl_cntr == 1):
+            if(self.cur_nst_lvl_opn_brc == 1):       
+                if(self.while_for_nst_lvl_cntr == 1):
+                    self.while_for_nst_lvl_cntr -= 1
                     self.current_state = self.fsm_states[0]
-                else:
+                else:                 
+                    self.cur_nst_lvl_opn_brc = self.stk_cur_nst_lvl_opn_brc.pop()
+                    self.while_for_nst_lvl_cntr -= 1
                     self.current_state = self.fsm_states[1]
             else:
                 self.cur_nst_lvl_opn_brc -= 1
@@ -492,6 +495,7 @@ class WhileManager:
 #--------- END of WhileManager class----------#     
 
 
+
 # Program_obj class, stores info about comment lines in a file, in a dict #
 # 1.  #
 class ParserNOperationSeqr:
@@ -510,6 +514,10 @@ class ParserNOperationSeqr:
     re_detect_do_stmt = "^\s*do\s*{\s*"
     re_detect_while_loop_stmt = "^\s*while\s*\((.*)\)\s*{\s*"
     re_detect_while_from_dowhile = "^\s*while\s*\((.*)\)\s*;\s*"
+    re_post_inc_or_dec_stmt = "^\s*" + re_get_var_name + '(\+\+|\-\-)\s*;\s*'
+    re_pre_inc_or_dec_stmt = "^\s*" + '(\+\+|\-\-)'+ re_get_var_name + '\s*;\s*'
+    re_for_stmt = "^\s*for\s*\((.*);(.*);(.*)\)\s*{\s*"
+    re_var_w_inc_or_dec = '([a-zA-Z_]+[0-9a-zA-Z_]*(?:\+\+|\-\-)|(?:\+\+|\-\-)[a-zA-Z_]+[0-9a-zA-Z_]*)'
     operator_lst_precedence_h2l = ['^', '/', '*', '%', '+', '-', '<', '>', '<=', '>=', '==', '!=', '&&', '||']
     
     def __init__(self, svr_lvl):
@@ -528,7 +536,8 @@ class ParserNOperationSeqr:
         self.if_else_mngr = IfElseManager()
         self.sw_case_mngr = SwitchCaseManager()
         self.do_while_mngr = DoWhileManager()
-        self.while_mngr = WhileManager()
+        self.while_mngr = ForWhileLoopManager()
+        self.for_mngr = ForWhileLoopManager()
         
     def __str__(self):
         return f"(Main funtion at line: {self.mn_fn_def_ln_num})"
@@ -540,9 +549,58 @@ class ParserNOperationSeqr:
         print(f"--- {time.time() - start_time:.6f} seconds ---")
         sys.exit()  
 
-    def pedmas_assembler(self, expn_in):
-        expn = expn_in
+
+    def pre_process_increment_or_decrement(self, expn):
+        expn_incdec_replcd = expn
+        inc_dec_op_lst = re.findall(self.re_var_w_inc_or_dec, expn)
+        for varop in inc_dec_op_lst:
+            if(re.search('\+\+'+ self.re_get_var_name, varop)):
+                op_type = '_TMPPRE_TEMPINC'
+            elif(re.search('\-\-'+ self.re_get_var_name, varop)):
+                op_type = '_TMPPRE_TEMPDEC'
+            elif(re.search(self.re_get_var_name + '\+\+', varop)):
+                op_type = '_TMPPOST_TEMPINC'
+            elif(re.search(self.re_get_var_name + '\-\-', varop)):
+                op_type = '_TMPPOST_TEMPDEC'
+            var = re.search(self.re_get_var_name, varop).group()
+            expn_incdec_replcd = expn_incdec_replcd.replace(varop, var + op_type)
+        return expn_incdec_replcd
+
+
+
+    def pre_or_post_inc_dec_parse_event_handlr(self, var, is_pre):
+        if(is_pre):
+            pre_post_str = 'PRE'
+        else:
+            pre_post_str = 'POST'
+        if '_TMP'+ pre_post_str +'_TEMPINC' in var:
+            var_extrt = re.search(self.re_get_var_name, var).group().replace('_TMP'+ pre_post_str +'_TEMPINC', '').replace(" ", '').strip(' ')
+            self.parse_event_seq_cntr += 1
+            self.parse_event_sequence_dict[self.parse_event_seq_cntr] = ( var_extrt, var_extrt+'+1')
+            return var_extrt
+        elif '_TMP'+ pre_post_str +'_TEMPDEC' in var:
+            var_extrt = re.search(self.re_get_var_name, var).group().replace('_TMP'+ pre_post_str +'_TEMPDEC', '').replace(" ", '').strip(' ')
+            self.parse_event_seq_cntr += 1
+            self.parse_event_sequence_dict[self.parse_event_seq_cntr] = ( var_extrt, var_extrt+'-1')
+            return var_extrt
+        elif '_TMP'+ pre_post_str + '_TEMPINC' in var:
+            var_extrt = re.search(self.re_get_var_name, var).group().replace('_TMP'+ pre_post_str + '_TEMPINC', '').replace(" ", '').strip(' ')
+            self.parse_event_seq_cntr += 1
+            self.parse_event_sequence_dict[self.parse_event_seq_cntr] = ( var_extrt, var_extrt+'+1')
+            return var_extrt
+        elif '_TMP'+ pre_post_str + '_TEMPDEC' in var:
+            var_extrt = re.search(self.re_get_var_name, var).group().replace('_TMP'+ pre_post_str + '_TEMPDEC', '').replace(" ", '').strip(' ')
+            self.parse_event_seq_cntr += 1
+            self.parse_event_sequence_dict[self.parse_event_seq_cntr] = ( var_extrt, var_extrt+'-1')
+            return var_extrt
+        else:
+            return var
+
+
+
+    def pedmas_assembler(self, expn_in):      
         print("INFO: Entering PEDMAS expression assembler.")
+        expn = self.pre_process_increment_or_decrement(expn_in)
         print(expn)
         for op in range(len(self.operator_lst_precedence_h2l)):
             print(op)
@@ -556,26 +614,39 @@ class ParserNOperationSeqr:
             print(list_curr_ops_tpl)
             for item in list_curr_ops_tpl:
                 print(item)
-                #print('tmpvar'+str(tmp_cnt))
                 multi_op_var_lst = list(item)
                 for varnum in range(len(item)-1):
                     tmp_var = 'PEDMAStmpvar'+str(self.tmp_var_cnt)
-                    var1 = multi_op_var_lst.pop(0)
-                    var2 = multi_op_var_lst.pop(0)
+                    var1_pre = multi_op_var_lst.pop(0)
+                    print("INFO: var1_pre: ", var1_pre)
+                    var1 = self.pre_or_post_inc_dec_parse_event_handlr(var1_pre, 1) 
+                    print("INFO: var1: ", var1)
+                    expn = expn.replace(var1_pre, var1.replace('_TMPPOST_TEMPINC', '').replace('_TMPPOST_TEMPDEC', ''))
+                    print("INFO: expn: ", expn)
+                    var2_pre = multi_op_var_lst.pop(0)
+                    print("INFO: var2_pre: ", var2_pre)
+                    var2 = self.pre_or_post_inc_dec_parse_event_handlr(var2_pre, 1) 
+                    print("INFO: var2: ", var2)
+                    expn = expn.replace(var2_pre, var2.replace('_TMPPOST_TEMPINC', '').replace('_TMPPOST_TEMPDEC', ''))
+                    print("INFO: expn: ", expn)
                     multi_op_var_lst.insert(0,tmp_var)
-                    rplc_str = var1+"\\"+self.operator_lst_precedence_h2l[op]+var2
+                    rplc_str = var1.replace('_TMPPOST_TEMPINC', '').replace('_TMPPOST_TEMPDEC', '')+"\\"+self.operator_lst_precedence_h2l[op]+var2.replace('_TMPPOST_TEMPINC', '').replace('_TMPPOST_TEMPDEC', '')
                     print(rplc_str)
                     self.parse_event_seq_cntr += 1
                     self.parse_event_sequence_dict[self.parse_event_seq_cntr] = ( tmp_var, ''.join(rplc_str.split("\\")))
                     expn = re.sub(rplc_str, tmp_var, expn, count=1)
-                    #print(x)
                     self.tmp_var_cnt += 1
+                    var1_post = self.pre_or_post_inc_dec_parse_event_handlr(var1_pre, 0)
+                    expn = expn.replace(var1_pre, var1_post)
+                    var2_post = self.pre_or_post_inc_dec_parse_event_handlr(var2_pre, 0)
+                    expn = expn.replace(var2_pre, var2_post)
         print("INFO: exiting PEDMAS expression assembler")
         return expn
                     
                     
     
-    def expn_seq_assembler(self, init_var, var, x1, line, ln_num):       
+    def expn_seq_assembler(self, init_var, var, x1, line, ln_num): 
+        print("INFO: identifing sequence of operations in expression")
         num_open_brk = len(re.findall("\(", x1))
         num_cls_brk = len(re.findall("\)", x1))
         print(num_cls_brk)
@@ -609,8 +680,8 @@ class ParserNOperationSeqr:
         
     
     def expression_syntax_parser(self, var_n_assignmnt_exp_lst, line, ln_num):
+        print("INFO: parsing expression syntax")
         for var_expn in var_n_assignmnt_exp_lst:
-            #[var, expn] =  var_expn.split('=') if len(var_expn.split('=')) == 2 else  [ 1, 1]
             var_expn_tuple_lst = re.findall('^([a-zA-Z_]+[0-9a-zA-Z_]*=)([=&\|!<>a-zA-Z_\+\-\(\)\/\*\^\%!\|=0-9]*)', var_expn)
             print(var_expn_tuple_lst)
             var = var_expn_tuple_lst[0][0].strip('=')
@@ -715,6 +786,10 @@ class ParserNOperationSeqr:
                 chk_stmt = self.re_detect_while_loop_stmt
                 print_stmt = "while()"    
                 event_type = 'LOOP'
+            elif(stmt_type == 5):
+                chk_stmt = '.*'
+                print_stmt = 'for(;;)'
+                event_type = 'LOOP'
             cond_str_to_parse = [cond_temp_var + '=' +  re.findall("^\s*" + chk_stmt, line)[0].replace(' ', '').strip(' ')]           
             print(cond_str_to_parse)
             if(self.expression_syntax_parser(cond_str_to_parse, line, ln_num)):
@@ -724,6 +799,35 @@ class ParserNOperationSeqr:
                 self.parse_event_sequence_dict[self.parse_event_seq_cntr] = (event_type, cond_temp_var)
             else:
                 self.print_error_msg_ext("ERROR: Failed condition evaluation at line: ", line, ln_num)
+
+
+
+    def chk_for_loop_n_upd(self, line, ln_num):
+        print("INFO: Entering for loop checker for line: " + str(ln_num) + ': ' + line)
+        for_stmt_match_obj = re.search(self.re_for_stmt, line)
+        if(for_stmt_match_obj):
+            print("INFO: Detected 'for' statement: " + line)
+            for_var, for_cond, for_var_inc_dec = re.findall(self.re_for_stmt, line)[0]
+            for_var, for_cond, for_var_inc_dec = for_var.strip(' '), for_cond.replace(' ', '').strip(' '), for_var_inc_dec.replace(' ', '').strip(' ')
+            chk_var_init = self.chk_var_dec_or_assignmnt(for_var+';', ln_num)
+            if(chk_var_init):
+                self.condition_chkr(for_cond, ln_num, 5)
+                #inc/dec or arithmetic chkr
+                if(self.chk_standalone_var_inc_dec_stmt(for_var_inc_dec+';', ln_num)):
+                    self.chk_cbrace_reqmnt_n_upd(line, ln_num, 1, sw_expn='')
+                    self.for_mngr.update_fsm_state(self.for_mngr.fsm_transition_events[0])
+                    return 1
+                elif(self.chk_var_dec_or_assignmnt(for_var_inc_dec+';', ln_num)):
+                    self.chk_cbrace_reqmnt_n_upd(line, ln_num, 1, sw_expn='')
+                    self.for_mngr.update_fsm_state(self.for_mngr.fsm_transition_events[0])
+                    return 1
+                else:
+                    return 0             
+            else:
+                return 0
+        else:
+            return 0
+
 
 
     def chk_while_n_upd(self, line, ln_num):
@@ -824,10 +928,21 @@ class ParserNOperationSeqr:
             return 1
         else:
             return 0
+        
+        
+    def chk_standalone_var_inc_dec_stmt(self, line, ln_num):
+        var_pre_incdec_match_obj = re.search(self.re_pre_inc_or_dec_stmt, line)
+        var_post_incdec_match_obj = re.search(self.re_post_inc_or_dec_stmt, line)
+        if(var_pre_incdec_match_obj or var_post_incdec_match_obj):
+            var_processed = self.pre_process_increment_or_decrement(line.replace(' ', '').strip(';').strip(' ').strip('\n'))
+            self.pre_or_post_inc_dec_parse_event_handlr(var_processed, 0)   
+            return 1
+        else:
+            return 0
 
 
     def chk_var_dec_or_assignmnt(self, line, ln_num):
-        print("INFO: line : " + line + ': ' + str(ln_num))
+        print("INFO: Entered var declaration or assignment checker for line : " + line + ': ' + str(ln_num))
         re_str_to_chk = "^" + self.re_get_token + '?' + "(\s*" + self.re_get_var_name + "\s*(" + self.re_get_exp + ")?,?)*;\s*"
         match_obj = re.search(re_str_to_chk, line)
         print(match_obj)
@@ -856,8 +971,8 @@ class ParserNOperationSeqr:
                     self.expression_syntax_parser(var_n_expn_lst_filtered, line, ln_num)
             else:
                 var_n_expn_lst = [rm_semicoln_nl_sp.replace(' ', '').strip(' ')]
-                var_only_lst = re.sub(self.re_get_exp, '',  rm_semicoln_nl_sp)
-                redec_lst = self.chk_var_re_dec_exp_syntx([var_only_lst.strip(' ')])
+                var_only_lst = [re.sub(self.re_get_exp, '',  rm_semicoln_nl_sp).strip(' ')]
+                redec_lst = self.chk_var_re_dec_exp_syntx(var_only_lst)
                 print(var_n_expn_lst)
                 print(var_only_lst)
                 print(redec_lst)
@@ -879,6 +994,7 @@ class ParserNOperationSeqr:
             self.sw_case_mngr.update_fsm_state(self.sw_case_mngr.fsm_transition_events[2])
             self.do_while_mngr.update_fsm_state(self.do_while_mngr.fsm_transition_events[2])
             self.while_mngr.update_fsm_state(self.while_mngr.fsm_transition_events[2])
+            self.for_mngr.update_fsm_state(self.for_mngr.fsm_transition_events[2])
             return 1
         else:
             return 0
@@ -899,10 +1015,7 @@ class ParserNOperationSeqr:
                 if(self.current_scope_var_list != []):
                     self.scope_var_lst_stck.append(self.current_scope_var_list)
                     self.current_scope_var_list = []
-                self.sw_case_mngr.update_fsm_state(self.sw_case_mngr.fsm_transition_events[1],  case_value='')
-                # if(self.sw_case_mngr.current_state > 0):
-                #     self.opn_expt_set_by_swcase = 1
-                #     self.expecting_opn_cbrace = 1
+                self.sw_case_mngr.update_fsm_state(self.sw_case_mngr.fsm_transition_events[1],  case_value='')               
             else:
                 print("INFO: Cbrace entered ln_is_mn_fn else")
                 if ((re.search("\s*", ln_splt_at_cbrace[0]))):
@@ -915,9 +1028,7 @@ class ParserNOperationSeqr:
                     self.sw_case_mngr.update_fsm_state(self.sw_case_mngr.fsm_transition_events[1])
                     self.do_while_mngr.update_fsm_state(self.do_while_mngr.fsm_transition_events[3])
                     self.while_mngr.update_fsm_state(self.while_mngr.fsm_transition_events[3])
-                    # if(self.sw_case_mngr.current_state > 0):
-                    #     self.opn_expt_set_by_swcase = 1
-                    #     self.expecting_opn_cbrace = 1
+                    self.for_mngr.update_fsm_state(self.for_mngr.fsm_transition_events[3])
                     if(re.search("^\s*$", ln_splt_at_cbrace[1]) ):
                         pass
                     else:
@@ -952,6 +1063,7 @@ class ParserNOperationSeqr:
                     self.sw_case_mngr.update_fsm_state(self.sw_case_mngr.fsm_transition_events[4])
                     self.do_while_mngr.update_fsm_state(self.do_while_mngr.fsm_transition_events[4])
                     self.while_mngr.update_fsm_state(self.while_mngr.fsm_transition_events[1])
+                    self.for_mngr.update_fsm_state(self.for_mngr.fsm_transition_events[1])
                     return 1
         else:
             return 0
@@ -1007,16 +1119,23 @@ def join_file_lines(fl_ln_lst):
     file_lines_new_line_rmd = ' '.join([i.strip('\n') for i in  fl_ln_lst])
     return file_lines_new_line_rmd
 
-def splite_file_lines_at_brace_or_semicolon(file_lines_new_line_rmd):
+def split_file_lines_at_brace_or_semicolon(file_lines_new_line_rmd):
+    print(file_lines_new_line_rmd)
     for_lst = re.findall("\s*for\s*(\(.*?;.*?;.*?\))\s*{\s*", file_lines_new_line_rmd)
+    tmp_cnt_var = 0
+    for_cond_rpl_str_lst = []
     for condlst in for_lst:
-        file_lines_new_line_rmd = re.sub(condlst, '_tmp_', file_lines_new_line_rmd)
+        file_lines_new_line_rmd = file_lines_new_line_rmd.replace(condlst, '_tmp_'+str(tmp_cnt_var))
+        for_cond_rpl_str_lst.append('_tmp_'+str(tmp_cnt_var))
+        tmp_cnt_var += 1
+    print(for_lst)
+    print(file_lines_new_line_rmd)
     file_lines_new_line_rmd = file_lines_new_line_rmd.replace(';', ';\n')
     file_lines_new_line_rmd = file_lines_new_line_rmd.replace(':', ':\n')
     file_lines_new_line_rmd = file_lines_new_line_rmd.replace('{', '{\n')
     file_lines_new_line_rmd = file_lines_new_line_rmd.replace('}', '\n}\n')  
-    for condlst in for_lst:
-        file_lines_new_line_rmd = file_lines_new_line_rmd.replace('_tmp_', condlst, count=1)
+    for condlst_i in range(len(for_lst)):
+        file_lines_new_line_rmd = file_lines_new_line_rmd.replace(for_cond_rpl_str_lst[len(for_lst)-condlst_i-1], for_lst[len(for_lst)-condlst_i-1])
     split_lines = file_lines_new_line_rmd.split('\n')
     return split_lines
 
@@ -1029,7 +1148,7 @@ def reformat_n_comments_rmd_file_lines(fl_ln_lst):
         else:
             fllst_cmnt_rmd.append(fl_ln_lst[line_num])
     file_lines_new_line_rmd = join_file_lines(fllst_cmnt_rmd)
-    formatted_file_lns = splite_file_lines_at_brace_or_semicolon(file_lines_new_line_rmd)
+    formatted_file_lns = split_file_lines_at_brace_or_semicolon(file_lines_new_line_rmd)
     return formatted_file_lns
 
 def start_fl_parse(file_lns):
@@ -1068,6 +1187,8 @@ def start_fl_parse(file_lns):
         # Check for var assignment#
             # If syntx ok => chk exp syntx #
         # Check if arithmetic/logical operation and upd val in var dict corresponding to appriate var #
+        elif(prog_obj.chk_standalone_var_inc_dec_stmt(file_lns[line_num], line_n)):
+            continue
         elif(prog_obj.chk_var_dec_or_assignmnt(file_lns[line_num], line_n)):
             continue
         # Check if conditional branch stmt 'if() else if() else' or 'switch() case x:'   and upd brn state vars
@@ -1079,6 +1200,8 @@ def start_fl_parse(file_lns):
         elif(prog_obj.chk_do_while_loop_n_upd(file_lns[line_num], line_n)):
             continue
         elif(prog_obj.chk_while_n_upd(file_lns[line_num], line_n)):
+            continue
+        elif(prog_obj.chk_for_loop_n_upd(file_lns[line_num], line_n)):
             continue
         # Previous src code line was entry into main fn but with no open cbrace -> chk for that now #
         elif(prog_obj.chk_cbrace_reqmnt_n_upd(file_lns[line_num], ln_num=line_n, ln_is_mn_fn=1)):
