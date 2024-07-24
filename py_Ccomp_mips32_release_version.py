@@ -4,16 +4,8 @@ Created on Sun Jun 23 12:50:59 2024
 
 @author: nsash
 
-Version : 17: 
-    -> expanding/re-using while manager class to handle for loop as well: now the class is re-named as: ForWhileLoopManager 
-    -> Added for manager instance of while manager class inparser/operation seqr class
-    -> added method chk_for_loop_n_upd() to parse for loops
-    -> updated condition_chkr() method to handle for loops
-    -> Added support for increment/decrement operations: updated pedmas_assembler() to include inc/dec handling
-    -> Added test code: test_for_loop.c and added expression with inc/dec in test.c to check features that have implemented
-    -> updated file pre-process/formatting function: split_file_lines_at_brace_or_semicolon() to fix bug in the for loop parenthsis capture logic
-    -> for/while loop manager bug fix: updated flow diagem for for-while loop manager: fixed order of poping out the stk when te='got }'
-    -> bug fix: pre-pocessor/formatter for loop condition handling had a bug for for-loop counts>10: doing for_cond replacement from reverse to cover larger numbers before getting to single digits 
+Version : 18: 
+    -> bug fix: do-while manager handling of close brace while waiting for while(); had increment/decrement error
     
 Opens:     
     -> Add back-end handling of merging point after break statement
@@ -397,9 +389,10 @@ class DoWhileManager:
             self.cur_nstd_opn_brace_cntr += 1
         elif(te == self.fsm_transition_events[4]):
             if(self.cur_nstd_opn_brace_cntr == 1):
+                self.cur_nstd_opn_brace_cntr = 0
                 self.current_state = self.fsm_states[2]
             else:
-                self.nstd_do_lvl_cntr -= 1
+                self.cur_nstd_opn_brace_cntr -= 1
         else:
             self.current_state =self.current_state 
         
@@ -518,7 +511,7 @@ class ParserNOperationSeqr:
     re_pre_inc_or_dec_stmt = "^\s*" + '(\+\+|\-\-)'+ re_get_var_name + '\s*;\s*'
     re_for_stmt = "^\s*for\s*\((.*);(.*);(.*)\)\s*{\s*"
     re_var_w_inc_or_dec = '([a-zA-Z_]+[0-9a-zA-Z_]*(?:\+\+|\-\-)|(?:\+\+|\-\-)[a-zA-Z_]+[0-9a-zA-Z_]*)'
-    operator_lst_precedence_h2l = ['^', '/', '*', '%', '+', '-', '<', '>', '<=', '>=', '==', '!=', '&&', '||']
+    operator_lst_precedence_h2l = [ '/', '*', '%', '+', '-', '<<', '>>', '<', '>', '<=', '>=', '==', '!=', '&', '^', '|', '&&', '||']
     
     def __init__(self, svr_lvl):
         self.main_fn_entered = 0
@@ -595,6 +588,7 @@ class ParserNOperationSeqr:
             return var_extrt
         else:
             return var
+
 
 
 
@@ -857,7 +851,9 @@ class ParserNOperationSeqr:
         elif(while_stmt_match_obj):
             print("INFO: Detected while from do-while statement: " + line)
             self.condition_chkr(line, ln_num, 3)
+            print("INFO: do_while manager FSM state before while(); detection: ", self.do_while_mngr.cur_nstd_opn_brace_cntr )
             self.do_while_mngr.update_fsm_state(self.do_while_mngr.fsm_transition_events[1])
+            print("INFO: do_while manager FSM state after while(); detection: ", self.do_while_mngr.cur_nstd_opn_brace_cntr )
             if(self.do_while_mngr.current_state == self.do_while_mngr.fsm_states[3]):
                 return 0
             else:
@@ -1035,8 +1031,10 @@ class ParserNOperationSeqr:
                         self.chk_var_dec_or_assignmnt(ln_splt_at_cbrace[1], ln_num)
                 else:
                     self.print_error_msg_ext("ERROR: Syntax error at line num: ",  line, ln_num)
+            print("INFO: Detected and processed '{' for line: " + str(ln_num) + ': ' + line)
             return 1
         else:
+            print("INFO: Exiting open brace checker w/o { detection for line: " + str(ln_num) + ': ' + line)
             self.expecting_opn_cbrace = 1
             return 0
 
