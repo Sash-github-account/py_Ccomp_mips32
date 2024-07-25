@@ -4,8 +4,8 @@ Created on Sun Jun 23 12:50:59 2024
 
 @author: nsash
 
-Version : 18: 
-    -> bug fix: do-while manager handling of close brace while waiting for while(); had increment/decrement error
+Version : 19: 
+    -> bug fix: inc/dec operation in a direct assignment through a single line needed parse event updation
     
 Opens:     
     -> Add back-end handling of merging point after break statement
@@ -59,8 +59,8 @@ import time
 # Class definitions for Objects and data structures used #
 ##########################################################
 
-# Comment class, stores info about comment lines in a file, in a dict #
-# Has method to check if a line is a comment n update the cmnt dict  #
+#===== Comment class, stores info about comment lines in a file, in a dict =====#
+#===== Has method to check if a line is a comment n update the cmnt dict  =====#
 class Comment:
     comment_lines_obj = {}
     
@@ -96,7 +96,7 @@ class Comment:
 
 
 
-# IfElseManager class, stores maintains nesting state of IFelse branch statement #
+#===== IfElseManager class, stores maintains nesting state of IFelse branch statement =====#
 class IfElseManager:
     fsm_states = [
         0, #'waiting for  if ',
@@ -203,7 +203,7 @@ class IfElseManager:
 
 
 
-# SwitchCaseManager class, stores maintains nesting state of switch-case branch statement #
+#===== SwitchCaseManager class, stores maintains nesting state of switch-case branch statement =====#
 class SwitchCaseManager:
     fsm_states = [
     0, # waiting for switch,
@@ -342,7 +342,7 @@ class SwitchCaseManager:
 
 
 
-# DoWhileManager class, stores maintains nesting state of do-while loop statement #
+#===== DoWhileManager class, stores maintains nesting state of do-while loop statement =====#
 class DoWhileManager:
     fsm_states = [
     0, # waiting for 'do' stmt,
@@ -420,7 +420,7 @@ class DoWhileManager:
 #--------- END of DoWhileManager class----------#     
 
 
-# WhileManager class, stores maintains nesting state of do-while loop statement #
+#===== WhileManager class, stores maintains nesting state of do-while loop statement =====#
 class ForWhileLoopManager:
     fsm_states = [
         0, # wait for while/for stmt:
@@ -489,8 +489,7 @@ class ForWhileLoopManager:
 
 
 
-# Program_obj class, stores info about comment lines in a file, in a dict #
-# 1.  #
+#===== Program_obj class, stores info about comment lines in a file, in a dict =====#
 class ParserNOperationSeqr:
     re_get_token = "\s*(void|int)"
     re_get_var_name = "[a-zA-Z_]+[0-9a-zA-Z_]*"
@@ -665,8 +664,11 @@ class ParserNOperationSeqr:
             print("INFO: Num Assignment")
             print(init_var)
             tmp_var = self.pedmas_assembler(x1)
+            var_extr = self.pre_or_post_inc_dec_parse_event_handlr(tmp_var, 1)
+            var_to_print = var_extr.replace('_TMPPOST_TEMPINC', '').replace('_TMPPOST_TEMPDEC', '')
             self.parse_event_seq_cntr += 1
-            self.parse_event_sequence_dict[self.parse_event_seq_cntr] = (init_var, tmp_var)
+            self.parse_event_sequence_dict[self.parse_event_seq_cntr] = (init_var, var_to_print)
+            self.pre_or_post_inc_dec_parse_event_handlr(var_extr, 0)
             return 1            
         else:
             self.print_error_msg_ext("ERROR: expression syntax error at line: ", line, ln_num)
@@ -806,7 +808,6 @@ class ParserNOperationSeqr:
             chk_var_init = self.chk_var_dec_or_assignmnt(for_var+';', ln_num)
             if(chk_var_init):
                 self.condition_chkr(for_cond, ln_num, 5)
-                #inc/dec or arithmetic chkr
                 if(self.chk_standalone_var_inc_dec_stmt(for_var_inc_dec+';', ln_num)):
                     self.chk_cbrace_reqmnt_n_upd(line, ln_num, 1, sw_expn='')
                     self.for_mngr.update_fsm_state(self.for_mngr.fsm_transition_events[0])
