@@ -278,14 +278,17 @@ class SwitchCaseManager:
             self.switch_nest_lvl -= 1
             self.cur_int_opn_brc_cnt -= 1
             self.current_state = self.fsm_states[0]
+            return self.pop_cond_var()
         else:
             if(self.cur_int_opn_brc_cnt > 1):
                 self.cur_int_opn_brc_cnt -= 1
                 self.chk_int_open_brace_n_upd_state()
+                return None
             else:
                 self.switch_nest_lvl -= 1
                 self.cur_int_opn_brc_cnt, self.cur_sw_deflt_defnd, self.cur_sw_case_vals,  self.cur_sw_stmt_cond_expn = self.sw_int_opnbr_stk.pop()
                 self.chk_int_open_brace_n_upd_state()
+                return self.pop_cond_var()
         
         
     def process_case_stmt_for_cur_sw(self, case_value):
@@ -307,6 +310,7 @@ class SwitchCaseManager:
             self.current_state = self.fsm_states[3]
         else:
             self.current_state = self.current_state
+        return None
             
         
     def transition_from_waitForDefault_state(self, te, case_value):
@@ -320,11 +324,13 @@ class SwitchCaseManager:
             self.cur_sw_deflt_defnd = 1
             self.current_state = self.fsm_states[2]
         elif(te == self.fsm_transition_events[4]):
-            self.process_cls_brace_transitions()
+            condvar = self.process_cls_brace_transitions()
+            return condvar
         elif(te == self.fsm_transition_events[5]):
             self.process_case_stmt_for_cur_sw(case_value)
         else:
             self.current_state = self.current_state
+        return None
             
         
     def transition_from_waitForSwStmtCls_state(self, te, case_value):
@@ -339,22 +345,27 @@ class SwitchCaseManager:
         elif(te == self.fsm_transition_events[3]):
             self.current_state = self.fsm_states[3]
         elif(te == self.fsm_transition_events[4]):
-            self.process_cls_brace_transitions()
+            condvar = self.process_cls_brace_transitions()
+            return condvar
         elif(te == self.fsm_transition_events[5]):
             self.process_case_stmt_for_cur_sw(case_value)
         else:
             self.current_state = self.current_state
+        return None
             
     
     def update_fsm_state(self, transition_event, sw_expn = '', case_value = ''):
         if(self.current_state == self.fsm_states[0]):
             self.transition_from_waitForSwitch_state(transition_event, sw_expn)
         elif(self.current_state == self.fsm_states[1]):
-            self.transition_from_waitForDefault_state(transition_event, case_value)
+            condvar = self.transition_from_waitForDefault_state(transition_event, case_value)
+            return condvar
         elif(self.current_state == self.fsm_states[2]):
-            self.transition_from_waitForSwStmtCls_state(transition_event, case_value)
+            condvar = self.transition_from_waitForSwStmtCls_state(transition_event, case_value)
+            return condvar
         else:
             self.current_state =  self.current_state
+        return None
             
     def get_last_sw_cond_expn_val(self):
         print("INFO: get_last_sw_cond_expn_val() from switch case manager called. Sending this value:")
@@ -441,6 +452,7 @@ class DoWhileManager:
             else:
                 self.cur_nstd_opn_brace_cntr = self.stck_nst_lvl.pop()
                 self.nstd_do_lvl_cntr -= 1
+            return self.pop_cond_var()
         
 
     def update_fsm_state(self, transition_event):
@@ -450,9 +462,11 @@ class DoWhileManager:
             self.transition_from_waitForWhileClsBrace_state(transition_event)
             return self.pop_cond_var()
         elif(self.current_state == self.fsm_states[2]):
-            self.transition_from_nxtSldBeWhile_state(transition_event)
+            condvar = self.transition_from_nxtSldBeWhile_state(transition_event)
+            return condvar
         else:
             self.current_state =  self.current_state    
+        return None
 #--------- END of DoWhileManager class----------#     
 
 
@@ -487,7 +501,7 @@ class ForWhileLoopManager:
         
         
     def pop_cond_var(self):
-        condvar = self.cond_var_stack.pop() if len(self.cond_var_stack) > 0 else 0
+        condvar = self.cond_var_stack.pop() #if len(self.cond_var_stack) > 0 else 0
         return condvar
 
     def transition_from_waitForWhile_state(self, te):
@@ -514,6 +528,7 @@ class ForWhileLoopManager:
                     self.cur_nst_lvl_opn_brc = self.stk_cur_nst_lvl_opn_brc.pop()
                     self.while_for_nst_lvl_cntr -= 1
                     self.current_state = self.fsm_states[1]
+                return self.pop_cond_var()
             else:
                 self.cur_nst_lvl_opn_brc -= 1
                 self.current_state = self.fsm_states[1]
@@ -521,17 +536,18 @@ class ForWhileLoopManager:
             self.cur_nst_lvl_opn_brc += 1
         else:
             self.current_state =self.current_state 
-        
+        return None
     
 
     def update_fsm_state(self, transition_event):
         if(self.current_state == self.fsm_states[0]):
             self.transition_from_waitForWhile_state(transition_event)
         elif(self.current_state == self.fsm_states[1]):
-            self.transition_from_waitForWhileClsBrace_state(transition_event)
-            return self.pop_cond_var()
+            condvar = self.transition_from_waitForWhileClsBrace_state(transition_event)
+            return condvar
         else:
-            self.current_state =  self.current_state    
+            self.current_state =  self.current_state   
+        return None
 #--------- END of WhileManager class----------#     
 
 
@@ -764,7 +780,7 @@ class ParserNOperationSeqr:
         for var in var_lst:
             self.current_scope_var_list.append(var)
             self.parse_event_seq_cntr += 1
-            self.parse_event_sequence_dict[self.parse_event_seq_cntr] = ('DECLARATION', var)
+            self.parse_event_sequence_dict[self.parse_event_seq_cntr] = ('@DECLARATION', var)
             
             
 
@@ -881,6 +897,7 @@ class ParserNOperationSeqr:
             print("INFO: Detected while statement: " + line)
             condvar = self.condition_chkr(line, ln_num, 4)
             self.while_mngr.update_fsm_state(self.while_mngr.fsm_transition_events[0])
+            print(condvar)
             self.while_mngr.push_cond_var(condvar)
             return 1
         else:
@@ -1117,22 +1134,22 @@ class ParserNOperationSeqr:
                     retd_condvar_dowhile = self.do_while_mngr.update_fsm_state(self.do_while_mngr.fsm_transition_events[4])
                     retd_condvar_while = self.while_mngr.update_fsm_state(self.while_mngr.fsm_transition_events[1])
                     retd_condvar_for = self.for_mngr.update_fsm_state(self.for_mngr.fsm_transition_events[1])
+                    if(retd_condvar_sw_case):
+                        print("ENTERED SW CS RET COND VAR")
+                        self.parse_event_seq_cntr += 1
+                        self.parse_event_sequence_dict[self.parse_event_seq_cntr] = ('SWITCH-CASE-END', retd_condvar_sw_case)                   
                     if(retd_condvar_ifelse):
                         self.parse_event_seq_cntr += 1
                         self.parse_event_sequence_dict[self.parse_event_seq_cntr] = ('IF-END', retd_condvar_ifelse)
-                    if(retd_condvar_sw_case):
-                        self.parse_event_seq_cntr += 1
-                        self.parse_event_sequence_dict[self.parse_event_seq_cntr] = ('SWITCH-CASE', retd_condvar_ifelse)
                     if(retd_condvar_dowhile):
                         self.parse_event_seq_cntr += 1
-                        self.parse_event_sequence_dict[self.parse_event_seq_cntr] = ('DO-WHILE-END', retd_condvar_ifelse)
+                        self.parse_event_sequence_dict[self.parse_event_seq_cntr] = ('DO-WHILE-END', retd_condvar_dowhile)
                     if(retd_condvar_while):
                         self.parse_event_seq_cntr += 1
-                        self.parse_event_sequence_dict[self.parse_event_seq_cntr] = ('WHILE-END', retd_condvar_ifelse)
+                        self.parse_event_sequence_dict[self.parse_event_seq_cntr] = ('WHILE-END', retd_condvar_while)
                     if(retd_condvar_for):
                         self.parse_event_seq_cntr += 1
-                        self.parse_event_sequence_dict[self.parse_event_seq_cntr] = ('FOR-END', retd_condvar_ifelse)
-                
+                        self.parse_event_sequence_dict[self.parse_event_seq_cntr] = ('FOR-END', retd_condvar_for)                
                     return 1
         else:
             return 0
@@ -1225,12 +1242,12 @@ def start_fl_parse(file_lns):
     # Go into loop for each line #
     for line_num in range(len(file_lns)):
         line_n = line_num+1
-        print("TEST: Event seq:")
-        print(prog_obj.current_scope_var_list)
-        print(prog_obj.scope_var_lst_stck)
-        print(prog_obj.done_scope_var_lst_stck) 
-        print("TEST: if..else current state: ", prog_obj.if_else_mngr.current_state)
-        print("TEST: switch case current state: ", prog_obj.sw_case_mngr.current_state)
+        # print("TEST: Event seq:")
+        # print(prog_obj.current_scope_var_list)
+        # print(prog_obj.scope_var_lst_stck)
+        # print(prog_obj.done_scope_var_lst_stck) 
+        # print("TEST: if..else current state: ", prog_obj.if_else_mngr.current_state)
+        # print("TEST: switch case current state: ", prog_obj.sw_case_mngr.current_state)
         #print(prog_obj.parse_event_sequence_dict)
         for key, value in prog_obj.parse_event_sequence_dict.items():
             print(f"{key}: {value}")
@@ -1277,7 +1294,7 @@ def start_fl_parse(file_lns):
             continue
         else:
             prog_obj.print_error_msg_ext("WIP: UNKNOWN syntax at line: ", file_lns[line_num], line_n)          
-    print(prog_obj.expecting_cls_cbrace)   
+    #print(prog_obj.expecting_cls_cbrace)   
     if(prog_obj.expecting_cls_cbrace != 0):
         prog_obj.print_error_msg_ext("ERROR: unclosed { in program: line:", file_lns[len(file_lns)-1], len(file_lns)-1)
         
@@ -1285,14 +1302,14 @@ def start_fl_parse(file_lns):
     
     
 # Main script begins #
-if(__name__ == "__main__"):
-    start_time = time.time()
-    flist = ["test_branch_loop_operations_combined.c"]#get_file_list_for_compile()
-    for fl in flist:
-        fl_lns = get_file_lines_list(fl)
-        print(fl_lns)
-        final_fl_lns = reformat_n_comments_rmd_file_lines(fl_lns)
-        print('\n'.join(final_fl_lns))
-        start_fl_parse(final_fl_lns)
-    print("Program runtime:")
-    print(f"--- {time.time() - start_time:.6f} seconds ---")
+#if(__name__ == "__main__"):
+start_time = time.time()
+flist = ["test_no_stmt.c"]#get_file_list_for_compile()
+for fl in flist:
+    fl_lns = get_file_lines_list(fl)
+    print(fl_lns)
+    final_fl_lns = reformat_n_comments_rmd_file_lines(fl_lns)
+    print('\n'.join(final_fl_lns))
+    start_fl_parse(final_fl_lns)
+print("Program runtime:")
+print(f"--- {time.time() - start_time:.6f} seconds ---")

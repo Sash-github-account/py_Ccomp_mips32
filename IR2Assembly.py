@@ -296,7 +296,7 @@ class IR2AssmblyConvrtr:
         rs, lw_inst1 = self.construct_ld_instr(opnd_var1)
         rt, lw_inst2 = self.construct_ld_instr(opnd_var2)
         rd, arith_inst_str = self.construct_R_type_instruction_seq(rs, rt, opr, shamt)
-        st_instr_str = self.construct_st_instr(rt, target_var)
+        rt, st_instr_str = self.construct_st_instr(rt, target_var)
         bsc_m32b_op_instr_seq = [lw_inst1, lw_inst2, arith_inst_str, st_instr_str]
         self.update_assem_instr_lst(bsc_m32b_op_instr_seq)
         self.return_register([rs, rt, rd])
@@ -327,15 +327,15 @@ class IR2AssmblyConvrtr:
         # load const 0 in reg5 ie., reg5 = 'r0' #
         reg5, lw_inst5 = self.construct_ld_instr('0') 
         # add reg0 + reg1 into reg0 #
-        add_inst = self.construct_R_type_instruction_seq(reg0, reg1, '+', 0, rd_in=reg0, override_dest=1)
+        reg0, add_inst = self.construct_R_type_instruction_seq(reg0, reg1, '+', 0, rd_in=reg0, override_dest=1)
         # sub reg2 - reg4 into reg2
-        sub_inst = self.construct_R_type_instruction_seq(reg2, reg4, '-', 0, rd_in=reg2, override_dest=1)
+        reg2, sub_inst = self.construct_R_type_instruction_seq(reg2, reg4, '-', 0, rd_in=reg2, override_dest=1)
         # set reg6 if less than: reg5 < reg2
         reg6, slt_inst = self.construct_R_type_instruction_seq(reg5, reg2, '<', 0)
         # branch on equal: reg6 == reg4 : -(4*3=12) #
         br_instr = self.construct_br_eq_instruction(reg6, reg4,  -(4*3))
         # sw reg0 to target_var address #
-        st_instr_str = self.construct_st_instr(reg0, target_var)
+        reg0, st_instr_str = self.construct_st_instr(reg0, target_var)
         # append instr strs #
         mul_instr_seq = [lw_inst1, lw_inst2, lw_inst3, lw_inst4, lw_inst5, add_inst, sub_inst, slt_inst, br_instr, st_instr_str]
         self.update_assem_instr_lst(mul_instr_seq)
@@ -375,16 +375,16 @@ class IR2AssmblyConvrtr:
         # branch on equal: reg6 == reg4 : (4*4) #
         br_instr = self.construct_br_eq_instruction(reg6, reg4,  (4*4))
         # sub reg1 - reg2 into reg1 #
-        sub_inst = self.construct_R_type_instruction_seq(reg1, reg2, '-', 0, rd_in=reg1, override_dest=1)
+        reg1, sub_inst = self.construct_R_type_instruction_seq(reg1, reg2, '-', 0, rd_in=reg1, override_dest=1)
         # add reg0 + reg4 into reg0 #
-        add_inst = self.construct_R_type_instruction_seq(reg0, reg4, '+', 0, rd_in=reg0, override_dest=1)
+        reg0, add_inst = self.construct_R_type_instruction_seq(reg0, reg4, '+', 0, rd_in=reg0, override_dest=1)
         # jump to -4*4 #
         jmp_inst = self.construct_j_type_instruction(-(4*4))
         # sw reg0 if division or sw reg1 if modulo to target_var address #
         if(opr == '/'):
-            st_instr_str = self.construct_st_instr(reg0, target_var)
+            reg0, st_instr_str = self.construct_st_instr(reg0, target_var)
         else:
-            st_instr_str = self.construct_st_instr(reg1, target_var)
+            reg1, st_instr_str = self.construct_st_instr(reg1, target_var)
         # append instr strs #
         div_mod_instr_seq = [lw_inst1, lw_inst2, lw_inst3, lw_inst4, lw_inst5, slt_inst, br_instr, sub_inst, add_inst, jmp_inst, st_instr_str]
         self.update_assem_instr_lst(div_mod_instr_seq)
@@ -424,9 +424,9 @@ class IR2AssmblyConvrtr:
         # branch if op1 == op2 to (4*2) #
         br_instr = self.construct_br_eq_instruction(reg1, reg2,  (4*2))
         # set reg3 if op1 < op2 #
-        slt_inst = self.construct_R_type_instruction_seq(reg1, reg2, '<', 0, rd_in=reg3, override_dest=1)
+        reg3, slt_inst = self.construct_R_type_instruction_seq(reg1, reg2, '<', 0, rd_in=reg3, override_dest=1)
         # store reg3 to target_var #
-        st_instr_str = self.construct_st_instr(reg3, target_var)
+        reg3, st_instr_str = self.construct_st_instr(reg3, target_var)
         # append instr strs #
         grteq_lsteq_instr_seq = [lw_inst1, lw_inst2, lw_inst3, br_instr, slt_inst, st_instr_str]
         self.update_assem_instr_lst(grteq_lsteq_instr_seq)
@@ -466,7 +466,7 @@ class IR2AssmblyConvrtr:
         # R type AND/OR on reg4 &/| reg5 in reg6 based on opr
         reg6, arith_inst_str = self.construct_R_type_instruction_seq(reg4, reg5, opr, 0)
         # store reg6 into target_var #
-        st_instr_str = self.construct_st_instr(reg6, target_var)
+        reg6, st_instr_str = self.construct_st_instr(reg6, target_var)
         # append instr strs #
         cond_AND_OR_instr_seq = [lw_inst0, lw_inst1, lw_inst2, lw_inst3, slt_inst1, slt_inst2, st_instr_str]
         self.update_assem_instr_lst(cond_AND_OR_instr_seq)
@@ -507,7 +507,7 @@ class IR2AssmblyConvrtr:
         else:
             reg1, lw_inst3 = self.construct_ld_instr('1')
         # store reg1 to addr(target_var) #
-        st_instr_str = self.construct_st_instr(reg1, target_var)
+        reg1 = st_instr_str = self.construct_st_instr(reg1, target_var)
         # append instr strs #
         cond_equ_noteq_instr_seq = [lw_inst0, lw_inst1, lw_inst2, br_instr, lw_inst3, st_instr_str]
         self.update_assem_instr_lst(cond_equ_noteq_instr_seq)
@@ -515,6 +515,62 @@ class IR2AssmblyConvrtr:
         ret_reg_lst = [reg3, reg1, reg2]
         self.return_register(ret_reg_lst)
         pass
+    
+    
+    def process_assignment_translation(self, event_seq_dict, ir_entry_num):
+        """
+        Processes an event sequence dictionary entry, decodes operation and operands, kicks of corresponding assembly 
+        code.
+        
+        Parameters:
+            event_seq_dict (dict): The event sequence dictionary mapping events to operations.
+            ir_entry_num (int): IR dict entry number being processed
+            
+        Returns:
+            None: The method updates the assembly instruction list internally.
+        """
+        i = ir_entry_num
+        opr_fnd = self.find_operator(event_seq_dict[i][1])
+        opnd_lst = re.findall("(" + PnOseqr.re_get_var_name + ')', event_seq_dict[i][1])
+        print(opnd_lst)
+        if(len(opnd_lst) > 1):
+            self.handle_new_constants(opnd_lst)
+            isany_instr_op = opr_fnd == '+' or opr_fnd == '-' or opr_fnd == '&' or opr_fnd == '|' or opr_fnd == '<'
+            if(isany_instr_op):  
+                self.construct_basic_32bmips_operation_instr_seq( event_seq_dict[i][0], opnd_lst[0], opnd_lst[1], opr_fnd, 0)
+            elif(opr_fnd == '>'):
+                opr_fnd = '<'
+                self.construct_basic_32bmips_operation_instr_seq( event_seq_dict[i][0], opnd_lst[1], opnd_lst[0], opr_fnd, 0)
+            elif(opr_fnd == '*'):
+                self.process_multiplication_operation(event_seq_dict[i][0], opnd_lst[0], opnd_lst[1])
+            elif(opr_fnd == '/' or opr_fnd == '%'):
+                self.process_divisionNmodulo_operation(event_seq_dict[i][0], opnd_lst[0], opnd_lst[1], opr_fnd)
+            elif(opr_fnd == '>=' or opr_fnd == '<='):
+                self.process_grteq_lsteq_ops(event_seq_dict[i][0], opnd_lst[0], opnd_lst[1], opr_fnd)
+            elif(opr_fnd == '&&' or opr_fnd == '||'):
+                self.process_cond_AND_OR_ops(event_seq_dict[i][0], opnd_lst[0], opnd_lst[1], opr_fnd)
+            elif(opr_fnd == '==' or opr_fnd == '!='):
+                self.process_cond_equ_noteq_ops(event_seq_dict[i][0], opnd_lst[0], opnd_lst[1], opr_fnd)
+            else:
+                print("ERROR: Assembler Failed: " + str(i))
+        else:
+            if(len(opnd_lst) == 1):
+                rt = self.get_unused_reg()
+                rt, st_instr_str = self.construct_st_instr(rt, event_seq_dict[i][0])
+                self.update_assem_instr_lst([st_instr_str])
+                self.return_register([rt])
+            elif(len(opnd_lst) == 0):
+                if(re.search("[0-9]+", event_seq_dict[i][1])):
+                    self.handle_new_constants(opnd_lst)
+                    rt = self.get_unused_reg()
+                    rt, st_instr_str = self.construct_st_instr(rt, event_seq_dict[i][0])
+                    self.update_assem_instr_lst([st_instr_str])
+                    self.return_register([rt])
+                else:
+                    print("ERROR: Assembler Failed: " + str(i))
+            else:
+                print("ERROR: Assembler Failed: " + str(i))
+    
     
         
     def process_event_seq(self, event_seq_dict):
@@ -531,142 +587,51 @@ class IR2AssmblyConvrtr:
         self.init_system_setup()
         for i in range(1, len(list(event_seq_dict.values())), 1):
             search_PEDMAS_variable = re.search("PEDMAStmpvar[0-9]+", event_seq_dict[i][0])
-            if event_seq_dict[i][0] == 'DECLARATION' or search_PEDMAS_variable:
+            if event_seq_dict[i][0] == '@DECLARATION' or search_PEDMAS_variable:
+                self.used_address_counter += 4
                 if(search_PEDMAS_variable):
                     self.variable_address_map[search_PEDMAS_variable.group()] = self.used_address_counter
+                    self.process_assignment_translation(event_seq_dict, i)
                 else:
                     self.variable_address_map[event_seq_dict[i][1]] = self.used_address_counter
-                self.used_address_counter += 4
             elif(re.search(PnOseqr.re_get_var_name, event_seq_dict[i][0])):
-                opr_fnd = self.find_operator(event_seq_dict[i][1])
-                opnd_lst = re.findall("(" + PnOseqr.re_get_var_name + ')', event_seq_dict[i][1])
-                print(opnd_lst)
-                if(len(opnd_lst) > 1):
-                    self.handle_new_constants(opnd_lst)
-                    isany_instr_op = opr_fnd == '+' or opr_fnd == '-' or opr_fnd == '&' or opr_fnd == '|' or opr_fnd == '<'
-                    if(isany_instr_op):  
-                        self.construct_basic_32bmips_operation_instr_seq( event_seq_dict[i][0], opnd_lst[0], opnd_lst[1], opr_fnd, 0)
-                    elif(opr_fnd == '>'):
-                        opr_fnd = '<'
-                        self.construct_basic_32bmips_operation_instr_seq( event_seq_dict[i][0], opnd_lst[1], opnd_lst[0], opr_fnd, 0)
-                    elif(opr_fnd == '*'):
-                        self.process_multiplication_operation(event_seq_dict[i][0], opnd_lst[0], opnd_lst[1])
-                    elif(opr_fnd == '/' or opr_fnd == '%'):
-                        self.process_divisionNmodulo_operation(event_seq_dict[i][0], opnd_lst[0], opnd_lst[1], opr_fnd)
-                    elif(opr_fnd == '>=' or opr_fnd == '<='):
-                        self.process_grteq_lsteq_ops(event_seq_dict[i][0], opnd_lst[0], opnd_lst[1], opr_fnd)
-                    elif(opr_fnd == '&&' or opr_fnd == '||'):
-                        self.process_cond_AND_OR_ops(event_seq_dict[i][0], opnd_lst[0], opnd_lst[1], opr_fnd)
-                    elif(opr_fnd == '==' or opr_fnd == '!='):
-                        self.process_cond_equ_noteq_ops(event_seq_dict[i][0], opnd_lst[0], opnd_lst[1], opr_fnd)
-                    else:
-                        print("ERROR: Assembler Failed: " + str(i))
-                else:
-                    if(len(opnd_lst) == 1):
-                        rt = self.get_unused_reg()
-                        st_instr_str = self.construct_st_instr(rt, event_seq_dict[i][0])
-                        self.update_assem_instr_lst(st_instr_str)
-                        self.return_register([rt])
-                    elif(len(opnd_lst) == 0):
-                        if(re.search("[0-9]+", event_seq_dict[i][1])):
-                            self.handle_new_constants(opnd_lst)
-                        print("ERROR: Assembler Failed: " + str(i))
+                self.process_assignment_translation(event_seq_dict, i)
     
-test_dict = {1: ('DECLARATION', 'a'),
-2: ('DECLARATION', 'b'),
-3: ('DECLARATION', 'n'),
-4: ('DECLARATION', 'c'),
-5: ('DECLARATION', 'z'),
-6: ('DECLARATION', 'd'),
-7: ('DECLARATION', 'e'),
+    
+    
+test_dict = {1: ('@DECLARATION', 'a'),
+2: ('a', '5'),
+3: ('@DECLARATION', 'b'),
+4: ('b', '10'),
+5: ('@DECLARATION', 'c'),
+6: ('c', '20'),
+7: ('@DECLARATION', 'd'),
 8: ('d', '0'),
-9: ('PEDMAStmpvar0', 'a/n'),
-10: ('PEDMAStmpvar1', 'PEDMAStmpvar0%b'),
-11: ('PEDMAStmpvar2', 'c+PEDMAStmpvar1'),
-12: ('e', 'PEDMAStmpvar2'),
-13: ('a', '1'),
-14: ('b', 'c'),
-15: ('c', 'a'),
-16: ('PEDMAStmpvar3', 'a+b'),
-17: ('PEDMAStmpvar4', 'PEDMAStmpvar3-c'),
-18: ('n', 'PEDMAStmpvar4'),
-19: ('DECLARATION', 'k'),
-20: ('DECLARATION', '_12b'),
-21: ('DECLARATION', 'cfg45'),
-22: ('DECLARATION', 'acd'),
-23: ('DECLARATION', 'y'),
-24: ('DECLARATION', 'h_ad'),
-25: ('PEDMAStmpvar5', 'acd%15'),
-26: ('PEDMAStmpvar6', 'y*89'),
-27: ('PEDMAStmpvar7', 'PEDMAStmpvar6/d'),
-28: ('PEDMAStmpvar8', '12*PEDMAStmpvar5'),
-29: ('PEDMAStmpvar9', 'cfg45+PEDMAStmpvar8'),
-30: ('PEDMAStmpvar10', 'PEDMAStmpvar9-PEDMAStmpvar7'),
-31: ('PEDMAStmpvar11', '_12b*PEDMAStmpvar10'),
-32: ('PEDMAStmpvar12', 'PEDMAStmpvar11*100'),
-33: ('PEDMAStmpvar13', 'PEDMAStmpvar12^h_ad'),
-34: ('PEDMAStmpvar14', 'a+PEDMAStmpvar13'),
-35: ('k', 'PEDMAStmpvar14'),
-36: ('PEDMAStmpvar15', 'd%a'),
-37: ('PEDMAStmpvar16', 'PEDMAStmpvar15%b'),
-38: ('PEDMAStmpvar17', 'PEDMAStmpvar16%c'),
-39: ('PEDMAStmpvar18', 'PEDMAStmpvar17%n'),
-40: ('cfg45', 'PEDMAStmpvar18'),
-41: ('PEDMAStmpvar20', 'a+b'),
-42: ('PEDMAStmpvar21', 'd-b'),
-43: ('PEDMAStmpvar22', 'PEDMAStmpvar21<a'),
-44: ('PEDMAStmpvar23', 'PEDMAStmpvar20>c'),
-45: ('PEDMAStmpvar24', 'PEDMAStmpvar23&&PEDMAStmpvar22'),
-46: ('COND_var_19', 'PEDMAStmpvar24'),
-47: ('BRANCH', 'COND_var_19'),
-48: ('DECLARATION', 'k1'),
-49: ('DECLARATION', 'var2'),
-50: ('DECLARATION', 'x'),
-51: ('PEDMAStmpvar25', 'a+b'),
-52: ('PEDMAStmpvar26', 'd-b'),
-53: ('PEDMAStmpvar27', 'PEDMAStmpvar26<a'),
-54: ('PEDMAStmpvar28', 'PEDMAStmpvar25>c'),
-55: ('PEDMAStmpvar29', 'PEDMAStmpvar28&&PEDMAStmpvar27'),
-56: ('k1', 'PEDMAStmpvar29'),
-57: ('PEDMAStmpvar30', 'x*y'),
-58: ('PEDMAStmpvar31', 'x/y'),
-59: ('PEDMAStmpvar32', 'PEDMAStmpvar31==2'),
-60: ('PEDMAStmpvar33', 'PEDMAStmpvar30!=z'),
-61: ('var2', 'PEDMAStmpvar33||PEDMAStmpvar32'),
-62: ('PEDMAStmpvar35', 'a+b'),
-63: ('PEDMAStmpvar36', 'PEDMAStmpvar35>c'),
-64: ('COND_var_34', 'PEDMAStmpvar36'),
-65: ('BRANCH', 'COND_var_34'),
-66: ('DECLARATION', 'k1'),
-67: ('DECLARATION', 'var2'),
-68: ('DECLARATION', 'x'),
-69: ('PEDMAStmpvar37', 'x*y'),
-70: ('PEDMAStmpvar38', 'PEDMAStmpvar37!=z'),
-71: ('var2', 'PEDMAStmpvar38'),
-72: ('PEDMAStmpvar40', 'b<a'),
-73: ('COND_var_39', 'PEDMAStmpvar40'),
-74: ('BRANCH', 'COND_var_39'),
-75: ('c', '0'),
-76: ('c', '1'),
-77: ('DECLARATION', 'xp'),
-78: ('b', 'b-1'),
-79: ('PEDMAStmpvar41', 'b*c'),
-80: ('c', 'c-1'),
-81: ('PEDMAStmpvar42', 'a+PEDMAStmpvar41'),
-82: ('a', 'a+1'),
-83: ('a', 'a+1'),
-84: ('PEDMAStmpvar43', 'PEDMAStmpvar42-a'),
-85: ('xp', 'PEDMAStmpvar43'),
-86: ('DECLARATION', 'i'),
-87: ('i', '0'),
-88: ('PEDMAStmpvar45', 'i<5'),
-89: ('COND_var_44', 'PEDMAStmpvar45'),
-90: ('LOOP', 'COND_var_44'),
-91: ('i', 'i+1'),
-92: ('PEDMAStmpvar46', 'i*xp'),
-93: ('PEDMAStmpvar47', 'PEDMAStmpvar46+1'),
-94: ('xp', 'PEDMAStmpvar47'),
-95: ('xp', 'xp+1')}
+9: ('@DECLARATION', 'e'),
+10: ('e', '0'),
+11: ('PEDMAStmpvar0', 'a+b'),
+12: ('d', 'PEDMAStmpvar0'),
+13: ('PEDMAStmpvar1', 'c-b'),
+14: ('e', 'PEDMAStmpvar1'),
+15: ('PEDMAStmpvar2', 'd*e'),
+16: ('d', 'PEDMAStmpvar2'),
+17: ('PEDMAStmpvar3', 'd/a'),
+18: ('e', 'PEDMAStmpvar3'),
+19: ('PEDMAStmpvar4', 'd%c'),
+20: ('d', 'PEDMAStmpvar4'),
+21: ('PEDMAStmpvar5', 'e&a'),
+22: ('d', 'PEDMAStmpvar5'),
+23: ('PEDMAStmpvar6', 'd|b'),
+24: ('e', 'PEDMAStmpvar6'),
+25: ('PEDMAStmpvar7', 'a^d'),
+26: ('b', 'PEDMAStmpvar7'),
+27: ('PEDMAStmpvar8', 'a<<2'),
+28: ('e', 'PEDMAStmpvar8'),
+29: ('PEDMAStmpvar9', 'b>>1'),
+30: ('d', 'PEDMAStmpvar9')}
                     
 asmconvrtr = IR2AssmblyConvrtr(95)
 asmconvrtr.process_event_seq(test_dict)
+for item in asmconvrtr.assembly_instruction_list:
+    print(item)
+print(asmconvrtr.used_register_stack)
