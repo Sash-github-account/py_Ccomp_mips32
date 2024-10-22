@@ -13,6 +13,8 @@ Version 2:
 import re
 from py_Ccomp_mips32_release_version import ParserNOperationSeqr as PnOseqr
 
+
+#--------- intermidiate representation to assembly and binary converter class----------#        
 class IR2AssmblyConvrtr:
     """
     This class converts an intermediate representation (IR) dictionary created by 
@@ -20,7 +22,9 @@ class IR2AssmblyConvrtr:
     """
     
     opcd_instrtyp_map = {0:'R', 35:'L', 43:'S', 4:'B', 2:'J'}
-    
+    R_type_operations = ['add', 'sub', 'AND', 'OR', 'slt']
+    R_type_operations_funct = {'add':'100000', 'sub':'100010', 'AND':'100100', 'OR':'100101', 'slt':'101010'}
+
     
     def __init__(self, base_size):
         """Initializes the IR2AssmblyConvrtr class, setting up the base address, unused registers,
@@ -29,8 +33,9 @@ class IR2AssmblyConvrtr:
         Parameters:
            base_size (int): The size of the base data section (used for address mapping).
         """       
-        self.data_section_base_address = (base_size)*4
+        self.data_section_base_address = 0
         self.used_address_counter = 0
+        self.bin_instr_n_data = []
         self.assembly_instruction_list = []
         self.unused_register_list = [
                             "r31",
@@ -66,10 +71,11 @@ class IR2AssmblyConvrtr:
                             "r1"
                             ]
         self.used_register_stack = []
-        self.variable_address_map = {str(base_size*4):self.data_section_base_address, '0':(base_size*4+4), '1':(base_size*4+8)}
-        self.data_section_base_address = (self.data_section_base_address+3)*4
+        self.variable_address_map = {}
+        self.data_section_base_address = 0
         self.current_assembly_address = 0
         self.data_section_base_address_register = ''
+        self.binary_instruction_list = []
 
 
  
@@ -90,16 +96,20 @@ class IR2AssmblyConvrtr:
 
 
 
-    def init_system_setup(self):
+    def init_system_setup(self, code_count):
         """
         Initializes the system by setting up the data base address register and
         adding the first 'lw' instruction to load the base address into a register.
         """
         self.data_section_base_address_register = self.get_unused_reg()
+        self.data_section_base_address = (code_count)*4*4
+        self.variable_address_map = {str(self.data_section_base_address):self.data_section_base_address, '0':(self.data_section_base_address+4), '1':(self.data_section_base_address+8)}
+        #self.data_section_base_address = (self.data_section_base_address+3)*4
         # lw self.data_section_base_address_register, self.data_section_base_address('r0')
+        self.used_address_counter = self.data_section_base_address + 12
         init_lw_instr_str = 'lw ' +  '$' + self.data_section_base_address_register + ' ' + str(self.data_section_base_address) +'($r0)'
         self.update_assem_instr_lst([init_lw_instr_str])
-        pass
+        
 
 
 
@@ -129,7 +139,7 @@ class IR2AssmblyConvrtr:
         """
         rs = self.data_section_base_address_register
         addr_offst = self.variable_address_map[target_var]
-        st_instr_str = 'sw' + ' $' + rt + ' ' + str(addr_offst) + '(' + " $" + rs + ')'
+        st_instr_str = 'sw' + ' $' + rt + ' ' + str(addr_offst) + '(' + "$" + rs + ')'
         return rt, st_instr_str        
 
 
@@ -146,7 +156,7 @@ class IR2AssmblyConvrtr:
         rs = self.data_section_base_address_register
         rt = self.get_unused_reg()
         addr_offst = self.variable_address_map[var]
-        ld_instr_str = 'lw' + ' $' + rt + ' ' + str(addr_offst) + '(' + " $" + rs + ')'
+        ld_instr_str = 'lw' + ' $' + rt + ' ' + str(addr_offst) + '(' + "$" + rs + ')'
         return rt, ld_instr_str
         
     
@@ -246,7 +256,7 @@ class IR2AssmblyConvrtr:
         for item in reglist:
             reg = self.used_register_stack.pop()
             self.unused_register_list.append(reg)
-        pass
+        
         
    
     def update_assem_instr_lst(self, assem_instr_str_lst):
@@ -259,7 +269,7 @@ class IR2AssmblyConvrtr:
         for asm_instr in assem_instr_str_lst:
             self.assembly_instruction_list.append(asm_instr)
             self.current_assembly_address += 1 
-        pass
+        
  
     
     def handle_new_constants(self, varlst):
@@ -274,7 +284,7 @@ class IR2AssmblyConvrtr:
                 if item not in self.variable_address_map.keys():
                     self.variable_address_map[item] = self.used_address_counter
                     self.used_address_counter += 4
-        pass
+        
     
     
   
@@ -515,8 +525,83 @@ class IR2AssmblyConvrtr:
         ret_reg_lst = [reg3, reg1, reg2]
         self.return_register(ret_reg_lst)
         pass
+  
+
+
+    def get_opcode_binary(self, assembly_instruction_type):
+            if(assembly_instruction_type == 'lw'):
+                opcode_binary = '100011'
+            elif(assembly_instruction_type == 'sw'):
+                opcode_binary = '101011'
+            elif(assembly_instruction_type == 'beq'):
+                opcode_binary = '000100'
+            elif(assembly_instruction_type == 'jmp'):
+                opcode_binary = '000010'
+            elif assembly_instruction_type in self.R_type_operations:
+                opcode_binary = '000000'
+            else:
+                pass
+            return opcode_binary
+    
+ 
+    
+    def get_register_number(self, register_string):
+        register_num_str = re.search("[0-9]?[0-9]", register_string).group()
+        return int(register_num_str)
     
     
+    
+    def get_lw_sw_rt_offset_binary(self, rt_offset_str):
+        tuple_list = re.findall("([0-9]+)\((.*)\)", rt_offset_str)
+        offset_binary_str = bin(self.get_register_number(tuple_list[0][0]))[2:].zfill(16) if self.get_register_number(tuple_list[0][0]) > 0 else bin((1 << 16) + self.get_register_number(tuple_list[0][0]))[2:]
+        rt_str = bin(self.get_register_number(tuple_list[0][1]))[2:].zfill(5)
+        rt_offset_binary = rt_str + offset_binary_str
+        return rt_offset_binary
+    
+    
+    
+    def construct_instruction_binary_body(self, split_instruction):
+        assembly_instruction_type = split_instruction[0]
+        if(assembly_instruction_type == 'lw' or assembly_instruction_type == 'sw'):
+            rs_num = self.get_register_number(split_instruction[1])
+            rs_binary_string = bin(rs_num)[2:].zfill(5)
+            rt_offset_binary = self.get_lw_sw_rt_offset_binary(split_instruction[2])
+            instruction_body = rs_binary_string + rt_offset_binary
+        elif(assembly_instruction_type == 'beq'):
+            rs_num = self.get_register_number(split_instruction[1])
+            rt_num = self.get_register_number(split_instruction[2])
+            rs_binary_string = bin(rs_num)[2:].zfill(5)
+            rt_binary_string = bin(rt_num)[2:].zfill(5)
+            offset_binary_string = bin(int(split_instruction[3]))[2:].zfill(16) if int(split_instruction[3]) > 0 else bin((1 << 16) + int(split_instruction[3]))[2:]
+            instruction_body = rs_binary_string + rt_binary_string + offset_binary_string
+        elif(assembly_instruction_type == 'jmp'):
+            instruction_body = bin(int(split_instruction[1]))[2:].zfill(26) if int(split_instruction[1]) > 0 else bin((1 << 26) + int(split_instruction[1]))[2:]
+        elif assembly_instruction_type in self.R_type_operations:
+            rs_num = self.get_register_number(split_instruction[1])
+            rt_num = self.get_register_number(split_instruction[2])
+            rd_num = self.get_register_number(split_instruction[3])
+            rs_binary_string = bin(rs_num)[2:].zfill(5)
+            rt_binary_string = bin(rt_num)[2:].zfill(5)
+            rd_binary_string = bin(rd_num)[2:].zfill(5)
+            shamt_binary_string = '00000'
+            funct_binary_string = self.R_type_operations_funct[split_instruction[0]]
+            instruction_body = rs_binary_string + rt_binary_string + rd_binary_string + shamt_binary_string + funct_binary_string           
+        else:
+            pass  
+        return instruction_body
+    
+    
+    
+    def generate_binary_code(self, instruction_list):
+        for instruction in instruction_list:
+            split_instruction = instruction.split(' ')
+            opcode_binary = self.get_opcode_binary(split_instruction[0])
+            rest_of_binary = self.construct_instruction_binary_body(split_instruction)
+            full_instruction_binary = opcode_binary + rest_of_binary
+            self.binary_instruction_list.append(full_instruction_binary)
+            
+    
+            
     def process_assignment_translation(self, event_seq_dict, ir_entry_num):
         """
         Processes an event sequence dictionary entry, decodes operation and operands, kicks of corresponding assembly 
@@ -531,10 +616,13 @@ class IR2AssmblyConvrtr:
         """
         i = ir_entry_num
         opr_fnd = self.find_operator(event_seq_dict[i][1])
-        opnd_lst = re.findall("(" + PnOseqr.re_get_var_name + ')', event_seq_dict[i][1])
+        opnd_var_only_lst = re.findall("(" + PnOseqr.re_get_var_name + ')', event_seq_dict[i][1])
+        const_lst = re.findall(PnOseqr.operators_group + '?([0-9]+)' + PnOseqr.operators_group + '?', event_seq_dict[i][1])
+        opnd_lst = opnd_var_only_lst + const_lst
         print(opnd_lst)
         if(len(opnd_lst) > 1):
             self.handle_new_constants(opnd_lst)
+            print(self.variable_address_map)
             isany_instr_op = opr_fnd == '+' or opr_fnd == '-' or opr_fnd == '&' or opr_fnd == '|' or opr_fnd == '<'
             if(isany_instr_op):  
                 self.construct_basic_32bmips_operation_instr_seq( event_seq_dict[i][0], opnd_lst[0], opnd_lst[1], opr_fnd, 0)
@@ -555,19 +643,21 @@ class IR2AssmblyConvrtr:
                 print("ERROR: Assembler Failed: " + str(i))
         else:
             if(len(opnd_lst) == 1):
-                rt = self.get_unused_reg()
+                self.handle_new_constants(opnd_lst)
+                print(self.variable_address_map)
+                rt, ld_var_instr_str = self.construct_ld_instr(event_seq_dict[i][1])
                 rt, st_instr_str = self.construct_st_instr(rt, event_seq_dict[i][0])
-                self.update_assem_instr_lst([st_instr_str])
+                self.update_assem_instr_lst([ld_var_instr_str, st_instr_str])
                 self.return_register([rt])
-            elif(len(opnd_lst) == 0):
-                if(re.search("[0-9]+", event_seq_dict[i][1])):
-                    self.handle_new_constants(opnd_lst)
-                    rt = self.get_unused_reg()
-                    rt, st_instr_str = self.construct_st_instr(rt, event_seq_dict[i][0])
-                    self.update_assem_instr_lst([st_instr_str])
-                    self.return_register([rt])
-                else:
-                    print("ERROR: Assembler Failed: " + str(i))
+            #elif(len(opnd_lst) == 0):
+                # if(re.search("[0-9]+", event_seq_dict[i][1])):
+                #     # self.handle_new_constants(opnd_lst)
+                #     # rt, ld_var_instr_str = self.construct_ld_instr(rt, event_seq_dict[i][0])
+                #     # rt, st_instr_str = self.construct_st_instr(rt, event_seq_dict[i][0])
+                #     # self.update_assem_instr_lst([ld_var_instr_str, st_instr_str])
+                #     # self.return_register([rt])
+                # else:
+                #     print("ERROR: Assembler Failed: " + str(i))
             else:
                 print("ERROR: Assembler Failed: " + str(i))
     
@@ -584,54 +674,60 @@ class IR2AssmblyConvrtr:
         Returns:
             None: The method updates the assembly instruction list internally.
         """
-        self.init_system_setup()
+        code_instruction_approx_count = len(list(event_seq_dict.values()))
+        self.init_system_setup(code_instruction_approx_count)
         for i in range(1, len(list(event_seq_dict.values())), 1):
             search_PEDMAS_variable = re.search("PEDMAStmpvar[0-9]+", event_seq_dict[i][0])
             if event_seq_dict[i][0] == '@DECLARATION' or search_PEDMAS_variable:
-                self.used_address_counter += 4
                 if(search_PEDMAS_variable):
                     self.variable_address_map[search_PEDMAS_variable.group()] = self.used_address_counter
                     self.process_assignment_translation(event_seq_dict, i)
                 else:
                     self.variable_address_map[event_seq_dict[i][1]] = self.used_address_counter
+                self.used_address_counter += 4
             elif(re.search(PnOseqr.re_get_var_name, event_seq_dict[i][0])):
                 self.process_assignment_translation(event_seq_dict, i)
+                
+                
+                
+    def construct_zero_padded_instr_n_data_bin(self):
+        data_section_bin_list = []
+        for key, value in self.variable_address_map.items():
+            if key.isdigit():
+                data_section_bin_list.append(bin(int(key))[2:].zfill(32))
+            else:
+                data_section_bin_list.append(bin(0)[2:].zfill(32))
+        print(list(self.variable_address_map.values())[0]/4)
+        upper_lim = int(list(self.variable_address_map.values())[0]/4)
+        lower_lim = len(self.binary_instruction_list)
+        diff = upper_lim - lower_lim
+        for i in range(diff):
+            self.binary_instruction_list.append(bin(0)[2:].zfill(32))
+        self.bin_instr_n_data = self.binary_instruction_list + data_section_bin_list
     
+#--------- END - intermidiate representation to assembly and binary converter class ----------#        
+
+
+##########################################################
+##########################################################      
     
-    
-test_dict = {1: ('@DECLARATION', 'a'),
+test_dict = {
+1: ('@DECLARATION', 'a'),
 2: ('a', '5'),
 3: ('@DECLARATION', 'b'),
 4: ('b', '10'),
-5: ('@DECLARATION', 'c'),
-6: ('c', '20'),
-7: ('@DECLARATION', 'd'),
-8: ('d', '0'),
-9: ('@DECLARATION', 'e'),
-10: ('e', '0'),
-11: ('PEDMAStmpvar0', 'a+b'),
-12: ('d', 'PEDMAStmpvar0'),
-13: ('PEDMAStmpvar1', 'c-b'),
-14: ('e', 'PEDMAStmpvar1'),
-15: ('PEDMAStmpvar2', 'd*e'),
-16: ('d', 'PEDMAStmpvar2'),
-17: ('PEDMAStmpvar3', 'd/a'),
-18: ('e', 'PEDMAStmpvar3'),
-19: ('PEDMAStmpvar4', 'd%c'),
-20: ('d', 'PEDMAStmpvar4'),
-21: ('PEDMAStmpvar5', 'e&a'),
-22: ('d', 'PEDMAStmpvar5'),
-23: ('PEDMAStmpvar6', 'd|b'),
-24: ('e', 'PEDMAStmpvar6'),
-25: ('PEDMAStmpvar7', 'a^d'),
-26: ('b', 'PEDMAStmpvar7'),
-27: ('PEDMAStmpvar8', 'a<<2'),
-28: ('e', 'PEDMAStmpvar8'),
-29: ('PEDMAStmpvar9', 'b>>1'),
-30: ('d', 'PEDMAStmpvar9')}
+5: ('@DECLARATION', 'd'),
+6: ('d', '0'),
+7: ('PEDMAStmpvar0', 'a+b'),
+8: ('d', 'PEDMAStmpvar0')}
                     
 asmconvrtr = IR2AssmblyConvrtr(95)
 asmconvrtr.process_event_seq(test_dict)
+asmconvrtr.generate_binary_code(asmconvrtr.assembly_instruction_list)
 for item in asmconvrtr.assembly_instruction_list:
     print(item)
-print(asmconvrtr.used_register_stack)
+for item in asmconvrtr.binary_instruction_list:
+    print(item)
+print(asmconvrtr.variable_address_map)
+asmconvrtr.construct_zero_padded_instr_n_data_bin()
+print(asmconvrtr.bin_instr_n_data)

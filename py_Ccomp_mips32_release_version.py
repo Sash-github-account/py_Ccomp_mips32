@@ -574,6 +574,8 @@ class ParserNOperationSeqr:
     re_for_stmt = "^\s*for\s*\((.*);(.*);(.*)\)\s*{\s*"
     re_var_w_inc_or_dec = '([a-zA-Z_]+[0-9a-zA-Z_]*(?:\+\+|\-\-)|(?:\+\+|\-\-)[a-zA-Z_]+[0-9a-zA-Z_]*)'
     operator_lst_precedence_h2l = [ '/', '*', '%', '+', '-', '<<', '>>', '<', '>', '<=', '>=', '==', '!=', '&', '^', '|', '&&', '||']
+    operators_group = "(?:\/|\*|%\+|-|<<|>>|<|>|<=|>=|==|!=|&|\^|\||&&|\|\|)"
+
     
     def __init__(self, svr_lvl):
         self.main_fn_entered = 0
@@ -1304,7 +1306,7 @@ def start_fl_parse(file_lns):
 # Main script begins #
 #if(__name__ == "__main__"):
 start_time = time.time()
-flist = ["test_no_stmt.c"]#get_file_list_for_compile()
+flist = ["test_add.c"]#get_file_list_for_compile()
 for fl in flist:
     fl_lns = get_file_lines_list(fl)
     print(fl_lns)
